@@ -6,7 +6,7 @@ const {
   orderByChild,
   equalTo,
 } = require("firebase/database");
-const { database } = require("./firebaseConfig.js");
+const { database } = require("../../firebaseConfig.js");
 
 export const login = async (req: Request, res: Response) => {
   const { username, password } = req.body;
