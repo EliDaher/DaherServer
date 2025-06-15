@@ -1,11 +1,14 @@
 import { Router } from "express";
 import authRoutes from "./auth.routes";
-import wifiRoutes from "./wifi.routes"
+import wifiRoutes from "./wifi.routes";
+import balanceRoutes from "./balance.routes"
 
 const router = Router();
 
 router.use("/auth", authRoutes);
 
 router.use("/wifi", wifiRoutes);
+
+router.use("/balance", balanceRoutes);
 
 export default router;
