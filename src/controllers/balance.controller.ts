@@ -54,3 +54,42 @@ export const getTotalDayBalance = async (req: Request, res: Response) => {
     });
   }
 };
+export const getTotalBalance = async (req: Request, res: Response) => {
+  try {
+    // نص البحث في التاريخ: ممكن يكون سنة فقط "2025-06" أو سنة-شهر-يوم "2025-06-16"
+    const dateSubstring = req.query.date ? String(req.query.date) : new Date().toISOString().split("T")[0].slice(0,7);
+    // خذنا أول 7 حروف بشكل افتراضي (مثلاً 2025-06) لو ما أعطى المستخدم تاريخ
+
+    const dbRef = ref(database, 'dailyTotal');
+
+    const snapshot = await get(dbRef);
+
+    if (!snapshot.exists()) {
+      return res.status(404).json({
+        success: false,
+        message: "لا توجد بيانات"
+      });
+    }
+
+    const data = snapshot.val(); // هذا كائن يحتوي مفاتيح التواريخ (مثل 2025-06-16)
+
+    // فلترة المفاتيح التي تحتوي substring التاريخ
+    const filteredEntries = Object.entries(data).filter(([key, value]) => key.includes(dateSubstring));
+
+    // ممكن تجمع النتائج حسب حاجتك، هنا أرسلهم كما هم
+    const result = Object.fromEntries(filteredEntries);
+
+    res.status(200).json({
+      success: true,
+      BalanceTable: result
+    });
+
+  } catch (error: any) {
+    console.error("Error fetching daily total balance:", error);
+    res.status(500).json({
+      success: false,
+      message: "حدث خطأ أثناء جلب البيانات",
+      error: error.message
+    });
+  }
+};
