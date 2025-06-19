@@ -1,8 +1,12 @@
 import { Router } from "express";
-import { getCustomers } from "../controllers/wifi.controller";
+import { getCustomerById, getCustomers, getTransactionsForCustomer } from "../controllers/wifi.controller";
 
 const router = Router();
 
 router.get("/getCustomers", getCustomers);
+
+router.get("/getCustomerById", getCustomerById);
+
+router.get("/getTransactionsForCustomer", getTransactionsForCustomer);
 
 export default router;
