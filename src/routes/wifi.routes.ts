@@ -5,8 +5,8 @@ const router = Router();
 
 router.get("/getCustomers", getCustomers);
 
-router.get("/getCustomerById", getCustomerById);
+router.get("/getCustomerById/:id", getCustomerById);
 
-router.get("/getTransactionsForCustomer", getTransactionsForCustomer);
+router.get("/getTransactionsForCustomer/:subscriberID", getTransactionsForCustomer);
 
 export default router;
