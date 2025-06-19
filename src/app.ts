@@ -11,6 +11,10 @@ app.use(morgan("dev"));
 
 app.use("/api", routes);
 
+app.get('/', (req, res) => {
+  res.send('Welcome to the server!');
+});
+
 app.use("*", (req, res) => {
   res.status(404).json({ message: "🚫 Route not found" });
 });
