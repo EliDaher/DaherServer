@@ -6,6 +6,7 @@ const {
   orderByChild,
   query,
   equalTo,
+  update,
 } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 
@@ -102,6 +103,26 @@ export const getTransactionsForCustomer = async (req: Request, res: Response) =>
     res.status(500).json({ success: false, error: "حدث خطأ أثناء جلب المعاملات" });
   }
 };
+
+export const updateCustomer = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const newData = req.body;
+
+    if (!id || !newData) {
+      return res.status(400).json({ success: false, error: "البيانات غير مكتملة" });
+    }
+
+    const customerRef = ref(database, `Subscribers/${id}`);
+    await update(customerRef, newData);
+
+    res.status(200).json({ success: true, message: "تم تحديث بيانات المشترك بنجاح" });
+  } catch (error) {
+    console.error("Error updating customer:", error);
+    res.status(500).json({ success: false, error: "حدث خطأ أثناء التحديث" });
+  }
+};
+
 
 
 
