@@ -7,6 +7,8 @@ const {
   query,
   equalTo,
   update,
+  set,
+  push,
 } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 
@@ -75,7 +77,7 @@ export const getTransactionsForCustomer = async (req: Request, res: Response) =>
           type: "invoice",
           amount: invoicesData[key].Amount,
           date: invoicesData[key].Date,
-          note: invoicesData[key].Note || "",
+          Details: invoicesData[key].Details || "",
         });
       }
     }
@@ -88,7 +90,7 @@ export const getTransactionsForCustomer = async (req: Request, res: Response) =>
           type: "payment",
           amount: paymentsData[key].Amount,
           date: paymentsData[key].Date,
-          note: paymentsData[key].Note || "",
+          Details: paymentsData[key].Details || "",
         });
       }
     }
@@ -123,6 +125,108 @@ export const updateCustomer = async (req: Request, res: Response) => {
   }
 };
 
+
+export const addPayment = async (req: Request, res: Response) => {
+  try {
+    const { amount, date, details, subscriberID, total, dealer } = req.body;
+
+    if (
+      !amount ||
+      !date ||
+      !details ||
+      !subscriberID ||
+      typeof total !== "number"
+    ) {
+      return res.status(400).json({ error: "Missing or invalid fields" });
+    }
+
+    // إنشاء payment ID عشوائي
+    const newPaymentRef = push(ref(database, "Payments"));
+    const paymentID = newPaymentRef.key;
+
+    const formData = {
+      Amount: amount,
+      Date: date,
+      Details: details,
+      PaymentID: paymentID,
+      SubscriberID: subscriberID,
+      id: paymentID,
+    };
+
+    // حفظ في Payments
+    await set(newPaymentRef, formData);
+
+    // حفظ في dealerPayments إذا وُجد dealer
+    if (dealer) {
+      const dealerPaymentRef = ref(database, `dealerPayments/${dealer}/${paymentID}`);
+      await set(dealerPaymentRef, formData);
+    }
+
+    // تحديث رصيد العميل
+    const newTotal = Number(total) + Number(amount);
+    const balanceRef = ref(database, `Subscribers/${subscriberID}/Balance`);
+    await set(balanceRef, newTotal);
+
+    res.status(200).json({
+      message: "Payment added successfully",
+      paymentID,
+      newTotal,
+    });
+
+  } catch (error) {
+    console.error("Error adding payment:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+
+export const addInvoice = async (req: Request, res: Response) => {
+  try {
+    const { amount, date, details, subscriberID } = req.body;
+
+    // التحقق من الحقول المطلوبة
+    if (!amount || !date || !details || !subscriberID) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // جلب الرصيد الحالي للمشترك
+    const balanceRef = ref(database, `Subscribers/${subscriberID}/Balance`);
+    const balanceSnapshot = await get(balanceRef);
+    const currentBalance = balanceSnapshot.exists()
+      ? Number(balanceSnapshot.val())
+      : 0;
+
+    // إنشاء المرجع وإضافة الفاتورة باستخدام push()
+    const newInvoiceRef = push(ref(database, "Invoices"));
+    const invoiceID = newInvoiceRef.key;
+
+    const formData = {
+      id: invoiceID,
+      InvoiceID: invoiceID,
+      Amount: Number(amount),
+      Date: date,
+      Details: details,
+      SubscriberID: subscriberID,
+    };
+
+    // حفظ الفاتورة
+    await set(newInvoiceRef, formData);
+
+    // تحديث الرصيد
+    const newBalance = currentBalance - Number(amount);
+    await set(balanceRef, newBalance);
+
+    return res.status(200).json({
+      message: "Invoice added successfully",
+      invoiceID,
+      newBalance,
+    });
+
+  } catch (error) {
+    console.error("Error adding invoice:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
 
 
 
