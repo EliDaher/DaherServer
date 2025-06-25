@@ -32,7 +32,6 @@ export const getCustomers = async (req: Request, res: Response) => {
         res.status(500).json({ error: "Failed to fetch data" });
     }
 };
-
 export const addCustomers = async (req: Request, res: Response) => {
   try {
     const {
@@ -55,12 +54,11 @@ export const addCustomers = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "يرجى تعبئة جميع الحقول المطلوبة." });
     }
 
-    // 🔹 إنشاء مرجع جديد أولاً
     const subscribersRef = ref(database, "Subscribers");
-    const newRef = await push(subscribersRef);
+    const newRef = push(subscribersRef);
 
     const newCustomer = {
-      id: newRef.key, // 🔹 استخدام المفتاح هنا بعد الإنشاء
+      id: newRef.key,
       Name: name,
       Contact: contactNumber,
       MonthlyFee: Number(MonthlyFee),
@@ -75,8 +73,7 @@ export const addCustomers = async (req: Request, res: Response) => {
       createdAt: new Date().toISOString(),
     };
 
-    // 🔹 حفظ البيانات
-    await newRef.set(newCustomer);
+    await set(newRef, newCustomer);  // هكذا تستدعي set
 
     res.status(200).json({
       success: true,
