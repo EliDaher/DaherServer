@@ -1,9 +1,11 @@
 import { Router } from "express";
-import { addInvoice, addPayment, getCustomerById, getCustomers, getTransactionsForCustomer, updateCustomer } from "../controllers/wifi.controller";
+import { addCustomers, addInvoice, addPayment, getCustomerById, getCustomers, getTransactionsForCustomer, updateCustomer } from "../controllers/wifi.controller";
 
 const router = Router();
 
 router.get("/getCustomers", getCustomers);
+
+router.post("/addCustomer", addCustomers);
 
 router.get("/getCustomerById/:id", getCustomerById);
 

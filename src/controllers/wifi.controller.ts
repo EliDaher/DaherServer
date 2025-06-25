@@ -33,6 +33,64 @@ export const getCustomers = async (req: Request, res: Response) => {
     }
 };
 
+export const addCustomers = async (req: Request, res: Response) => {
+  try {
+    const {
+      name,
+      contactNumber,
+      MonthlyFee,
+      speed,
+      userIp,
+      userName,
+      password,
+      location,
+      sender,
+      seller,
+    } = req.body;
+
+    if (
+      !name || !contactNumber || !MonthlyFee || !speed ||
+      !userIp || !userName || !password || !location || !sender || !seller
+    ) {
+      return res.status(400).json({ error: "يرجى تعبئة جميع الحقول المطلوبة." });
+    }
+
+    // 🔹 إنشاء مرجع جديد أولاً
+    const subscribersRef = ref(database, "Subscribers");
+    const newRef = await push(subscribersRef);
+
+    const newCustomer = {
+      id: newRef.key, // 🔹 استخدام المفتاح هنا بعد الإنشاء
+      Name: name,
+      Contact: contactNumber,
+      MonthlyFee: Number(MonthlyFee),
+      SubscriptionSpeed: speed,
+      userIp,
+      UserName: userName,
+      Password: password,
+      location,
+      sender,
+      seller,
+      Balance: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    // 🔹 حفظ البيانات
+    await newRef.set(newCustomer);
+
+    res.status(200).json({
+      success: true,
+      message: "تم إضافة المشترك بنجاح ✅",
+      id: newRef.key,
+      data: newCustomer,
+    });
+
+  } catch (error) {
+    console.error("❌ خطأ في الإضافة إلى Firebase:", error);
+    res.status(500).json({ error: "فشل في إضافة البيانات إلى قاعدة البيانات." });
+  }
+};
+
 export const getCustomerById = async (req: Request, res: Response) => {
 
     try {
