@@ -50,7 +50,7 @@ export const addCustomers = async (req: Request, res: Response) => {
 
     if (
       !name || !contactNumber || !MonthlyFee || !speed ||
-      !userIp || !userName || !password || !location || !sender || !seller
+      !userIp || !userName || !password || !location || !sender
     ) {
       return res.status(400).json({ error: "يرجى تعبئة جميع الحقول المطلوبة." });
     }
