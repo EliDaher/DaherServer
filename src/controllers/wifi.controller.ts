@@ -45,7 +45,7 @@ export const addCustomers = async (req: Request, res: Response) => {
       password,
       location,
       sender,
-      seller,
+      dealer,
     } = req.body;
 
     if (
@@ -70,7 +70,7 @@ export const addCustomers = async (req: Request, res: Response) => {
       Password: password,
       location,
       sender,
-      seller,
+      dealer,
       Balance: 0,
       createdAt: new Date().toISOString(),
     };
