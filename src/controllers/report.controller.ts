@@ -56,9 +56,11 @@ export const getAgingReport = async (req: Request, res: Response) => {
       const today = new Date();
 
       for (const key in invoicesData) {
-        const { Amount, Date } = invoicesData[key];
-        const invoiceDate = new Date(Date);
-        const diffDays = Math.floor((today.getTime() - invoiceDate.getTime()) / (1000 * 60 * 60 * 24));
+        const { Amount, Date: invoiceDateString } = invoicesData[key];
+        const invoiceDate = new Date(invoiceDateString);
+        const diffDays = Math.floor(
+          (today.getTime() - invoiceDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
 
         if (diffDays <= 30) agingBuckets["0-30"] += Number(Amount);
         else if (diffDays <= 60) agingBuckets["31-60"] += Number(Amount);
