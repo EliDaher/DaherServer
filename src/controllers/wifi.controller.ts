@@ -285,3 +285,36 @@ export const addInvoice = async (req: Request, res: Response) => {
 
 
 
+const fetchData = async (path: any) => {
+    try {
+        const dbRef = ref(database);
+        const snapshot = await get(child(dbRef, path));
+
+        if (snapshot.exists()) {
+            const data = snapshot.val();
+            return Object.keys(data).map(key => ({ ...data[key] }));
+        } else {
+            console.log(`No data available at path: ${path}`);
+            return [];
+        }
+    } catch (error) {
+        console.error(`Error fetching data from ${path}:`, error);
+        return [];
+    }
+};
+
+export const getBalance = async (req: Request, res: Response) => {
+    try {
+
+      const [WifiBalance, WifiPayments] = await Promise.all([
+        fetchData("WifiBalance"),
+        fetchData("Payments")
+      ]);
+
+      res.status(200).json({ success: true, WifiBalance, WifiPayments });
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Error reading data: ' + error });
+    }
+};
+
+
