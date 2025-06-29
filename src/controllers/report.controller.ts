@@ -41,38 +41,60 @@ export const getMonthlyRevenue = async (req: Request, res: Response) => {
   }
 };
 
-export const getAgingReport = async (req: Request, res: Response) => {
+export const getDebtAgingByBalance = async (req: Request, res: Response) => {
   try {
-    const invoicesSnap = await get(ref(database, "Invoices"));
-    const agingBuckets = {
-      "0-30": 0,
-      "31-60": 0,
-      "61-90": 0,
-      "90+": 0,
-    };
+    // جلب المشتركين
+    const subscribersSnap = await get(ref(database, "Subscribers"));
+    if (!subscribersSnap.exists()) {
+      return res.status(404).json({ success: false, error: "No subscribers found." });
+    }
+    const subscribersData = subscribersSnap.val();
 
-    if (invoicesSnap.exists()) {
-      const invoicesData = invoicesSnap.val();
-      const today = new Date();
+    // جلب المدفوعات
+    const paymentsSnap = await get(ref(database, "Payments"));
+    const paymentsData = paymentsSnap.exists() ? paymentsSnap.val() : {};
 
-      for (const key in invoicesData) {
-        const { Amount, Date: invoiceDateString } = invoicesData[key];
-        const invoiceDate = new Date(invoiceDateString);
-        const diffDays = Math.floor(
-          (today.getTime() - invoiceDate.getTime()) / (1000 * 60 * 60 * 24)
-        );
+    // تجهيز التقرير
+    const today = new Date();
+    const report: any[] = [];
 
-        if (diffDays <= 30) agingBuckets["0-30"] += Number(Amount);
-        else if (diffDays <= 60) agingBuckets["31-60"] += Number(Amount);
-        else if (diffDays <= 90) agingBuckets["61-90"] += Number(Amount);
-        else agingBuckets["90+"] += Number(Amount);
+    for (const key in subscribersData) {
+      const subscriber = subscribersData[key];
+      const subscriberID = subscriber.id;
+      const balance = Number(subscriber.Balance) || 0;
+
+      // إيجاد آخر دفعة
+      let latestPaymentDate: Date | null = null;
+      for (const payKey in paymentsData) {
+        const payment = paymentsData[payKey];
+        if (payment.SubscriberID === subscriberID) {
+          const paymentDate = new Date(payment.Date);
+          if (!latestPaymentDate || paymentDate > latestPaymentDate) {
+            latestPaymentDate = paymentDate;
+          }
+        }
       }
+
+      // حساب الأيام منذ آخر دفعة
+      let daysSinceLastPayment = null;
+      if (latestPaymentDate) {
+        const diffMs = today.getTime() - latestPaymentDate.getTime();
+        daysSinceLastPayment = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      }
+
+      // إضافة للسجل
+      report.push({
+        SubscriberID: subscriberID,
+        Name: subscriber.Name,
+        Balance: balance,
+        DaysSinceLastPayment: daysSinceLastPayment,
+      });
     }
 
-    res.status(200).json({ success: true, data: agingBuckets });
+    res.status(200).json({ success: true, data: report });
 
   } catch (error) {
-    console.error("Error generating aging report:", error);
+    console.error("Error generating debt aging report:", error);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 };
