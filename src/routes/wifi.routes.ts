@@ -17,6 +17,6 @@ router.post("/addPayment/", addPayment);
 
 router.post("/addInvoice", addInvoice);
 
-router.get('getWifiBalance', getBalance)
+router.get('/getWifiBalance', getBalance)
 
 export default router;
