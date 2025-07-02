@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 const {
   ref,
   get,
+  remove
 } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 
@@ -148,3 +149,101 @@ export const getInvoicesWithStatus = async (req: Request, res: Response) => {
   }
 };
 
+export const listDuplicateInvoices = async (req: Request, res: Response) => {
+  try {
+    // تحميل الفواتير
+    const invoicesSnap = await get(ref(database, "Invoices"));
+    const invoices = invoicesSnap.val();
+
+    if (!invoices) {
+      return res.status(200).json({ message: "❗ لا يوجد فواتير!" });
+    }
+
+    // تجميع التكرارات
+    const seen: Record<string, Array<{ id: string; data: any }>> = {};
+
+    Object.entries(invoices).forEach(([invoiceId, invoice]: any) => {
+      const key = `${invoice.SubscriberID}-${invoice.Date}-${invoice.Details}`;
+      if (!seen[key]) {
+        seen[key] = [];
+      }
+      seen[key].push({ id: invoiceId, data: invoice });
+    });
+
+    // تجهيز قائمة الفواتير التي سيتم حذفها
+    const duplicates: Array<{
+      keep: { id: string; data: any };
+      toDelete: Array<{ id: string; data: any }>;
+    }> = [];
+
+    Object.entries(seen).forEach(([key, invoicesArray]) => {
+      if (invoicesArray.length > 1) {
+        duplicates.push({
+          keep: invoicesArray[0], // أول فاتورة تُترك
+          toDelete: invoicesArray.slice(1), // الباقي يُعتبر تكرار
+        });
+      }
+    });
+
+    return res.status(200).json({
+      message: `✅ تم العثور على ${duplicates.length} مجموعة فواتير مكررة.`,
+      duplicates
+    });
+
+  } catch (error: any) {
+    console.error("❌ خطأ أثناء البحث عن التكرارات:", error.message);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+
+export const removeDuplicateInvoices = async (req: Request, res: Response) => {
+  try {
+    // تحميل الفواتير
+    const invoicesSnap = await get(ref(database, "Invoices"));
+    const invoices = invoicesSnap.val();
+
+    if (!invoices) {
+      return res.status(200).json({ message: "❗ لا يوجد فواتير!" });
+    }
+
+    // كائن لتجميع التكرارات
+    const seen: Record<string, string[]> = {}; // المفتاح = SubscriberID-Date-Details, القيمة = array of IDs
+
+    Object.entries(invoices).forEach(([invoiceId, invoice]: any) => {
+      const key = `${invoice.SubscriberID}-${invoice.Date}-${invoice.Details}`;
+      if (!seen[key]) {
+        seen[key] = [];
+      }
+      seen[key].push(invoiceId);
+    });
+
+    // حذف التكرارات والإبقاء على واحدة فقط
+    const deletions: Promise<void>[] = [];
+    let duplicatesCount = 0;
+
+    Object.entries(seen).forEach(([key, ids]) => {
+      if (ids.length > 1) {
+        // يوجد تكرار
+        duplicatesCount += ids.length - 1;
+
+        // أبقِ أول عنصر واحذف البقية
+        const idsToDelete = ids.slice(1);
+        idsToDelete.forEach((id) => {
+          const deleteRef = ref(database, `Invoices/${id}`);
+          deletions.push(remove(deleteRef));
+        });
+      }
+    });
+
+    // تنفيذ الحذف
+    await Promise.all(deletions);
+
+    return res.status(200).json({
+      message: `✅ تم حذف ${duplicatesCount} من الفواتير المكررة.`,
+    });
+  } catch (error: any) {
+    console.error("❌ خطأ أثناء حذف التكرارات:", error.message);
+    return res.status(500).json({ error: error.message });
+  }
+};
