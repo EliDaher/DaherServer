@@ -318,3 +318,87 @@ export const getBalance = async (req: Request, res: Response) => {
 };
 
 
+export const verifyAndFixBalances = async (req: Request, res: Response) => {
+  try {
+    // تحميل المشتركين
+    const subscribersSnap = await get(ref(database, "Subscribers"));
+    const subscribers = subscribersSnap.val();
+
+    if (!subscribers) {
+      return res.status(200).json({ message: "❗ لا يوجد مشتركين!" });
+    }
+
+    // تحميل الفواتير
+    const invoicesSnap = await get(ref(database, "Invoices"));
+    const invoices = invoicesSnap.val() || {};
+
+    // تحميل الدفعات
+    const paymentsSnap = await get(ref(database, "Payments"));
+    const payments = paymentsSnap.val() || {};
+
+    const updates: Record<string, number> = {};
+    const report: Array<{
+      subscriberId: string;
+      recordedBalance: number;
+      expectedBalance: number;
+      fixed: boolean;
+    }> = [];
+
+    Object.keys(subscribers).forEach((userId) => {
+      const subscriber = subscribers[userId];
+      const recordedBalance = Number(subscriber.Balance) || 0;
+
+      // جمع الفواتير
+      let totalInvoices = 0;
+      Object.values(invoices).forEach((invoice: any) => {
+        if (String(invoice.SubscriberID) === String(userId)) {
+          totalInvoices += Number(invoice.Amount) || 0;
+        }
+      });
+
+      // جمع الدفعات
+      let totalPayments = 0;
+      Object.values(payments).forEach((payment: any) => {
+        if (String(payment.SubscriberID) === String(userId)) {
+          totalPayments += Number(payment.Amount) || 0;
+        }
+      });
+
+      const expectedBalance = totalPayments - totalInvoices;
+
+      if (expectedBalance !== recordedBalance) {
+        // نضيف تعديل الرصيد
+        updates[`Subscribers/${userId}/Balance`] = expectedBalance;
+        report.push({
+          subscriberId: userId,
+          recordedBalance,
+          expectedBalance,
+          fixed: true
+        });
+      } else {
+        report.push({
+          subscriberId: userId,
+          recordedBalance,
+          expectedBalance,
+          fixed: false
+        });
+      }
+    });
+
+    // إذا هناك تعديلات نقوم بتحديثها
+    if (Object.keys(updates).length > 0) {
+      await update(ref(database), updates);
+    }
+
+    return res.status(200).json({
+      message: "✅ تم التحقق وتصحيح الأرصدة.",
+      report
+    });
+
+  } catch (error: any) {
+    console.error("❌ خطأ أثناء التحقق:", error.message);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+
