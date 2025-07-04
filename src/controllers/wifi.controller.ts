@@ -469,10 +469,8 @@ export const verifyBalances = async (req: Request, res: Response) => {
 
 export const addWifiExpenses = async (req: Request, res: Response) => {
   try {
-    const date = new Date().toISOString().split("T")[0];
-    const { amount, details } = req.body;
+    const { amount, details, date } = req.body;
 
-    // التحقق من صحة المدخلات
     if (
       !amount ||
       isNaN(amount) ||
