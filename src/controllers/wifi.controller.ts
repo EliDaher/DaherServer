@@ -467,3 +467,49 @@ export const verifyBalances = async (req: Request, res: Response) => {
   }
 };
 
+export const addWifiExpenses = async (req: Request, res: Response) => {
+  try {
+    const date = new Date().toISOString().split("T")[0];
+    const { amount, details } = req.body;
+
+    // التحقق من صحة المدخلات
+    if (
+      !amount ||
+      isNaN(amount) ||
+      !details ||
+      !details.trim()
+    ) {
+      return res.status(400).json({ error: "Invalid input data" });
+    }
+
+    // إنشاء مرجع جديد
+    const expensesRef = ref(database, "WifiBalance");
+    const newExpenseRef = push(expensesRef);
+
+    // تجهيز البيانات
+    const data = {
+      id: newExpenseRef.key,
+      amount: Number(amount),
+      employee: "elidaher",
+      details: details.trim(),
+      timestamp: date,
+    };
+
+    // الحفظ
+    await set(newExpenseRef, data);
+
+    // الرد على العميل
+    return res.status(200).json({
+      success: true,
+      message: "تمت إضافة النفقة بنجاح",
+      data,
+    });
+  } catch (error) {
+    console.error("Error in addWifiExpenses:", error);
+    return res.status(500).json({
+      error: "Internal server error. Please try again later.",
+    });
+  }
+};
+
+

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { addCustomers, addInvoice, addPayment, getBalance, getCustomerById, getCustomers, getTransactionsForCustomer, updateCustomer, verifyAndFixBalances, verifyBalances } from "../controllers/wifi.controller";
+import { addCustomers, addInvoice, addPayment, addWifiExpenses, getBalance, getCustomerById, getCustomers, getTransactionsForCustomer, updateCustomer, verifyAndFixBalances, verifyBalances } from "../controllers/wifi.controller";
 
 const router = Router();
 
@@ -22,6 +22,8 @@ router.get('/getWifiBalance', getBalance);
 router.get('/verifyAndFixBalances', verifyAndFixBalances);
 
 router.get('/verifyBalances', verifyBalances);
+
+router.post('/addWifiExpenses', addWifiExpenses);
 
 
 export default router;
