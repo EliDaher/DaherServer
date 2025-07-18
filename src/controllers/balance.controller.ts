@@ -93,3 +93,44 @@ export const getTotalBalance = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const getEmployeeBalanceTable = async (req: Request, res: Response) => {
+  try {
+    const { username, date } = req.body;
+    const dbRef = ref(database);
+    let invoiceList: any[] = [];
+
+    if (username !== "all") {
+      // الفواتير الخاصة بموظف واحد
+      const snapshot = await get(child(dbRef, `dailyTotal/${date}/${username}`));
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        invoiceList = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+      } else {
+        console.log(`No data available for ${username}`);
+      }
+    } else {
+      // الفواتير الخاصة بجميع الموظفين
+      const snapshot = await get(child(dbRef, `dailyTotal/${date}`));
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        // دمج جميع الفواتير من جميع الموظفين
+        invoiceList = Object.keys(data).flatMap(emp =>
+          Object.keys(data[emp]).map(key => ({
+            employee: emp,
+            id: key,
+            ...data[emp][key]
+          }))
+        );
+      } else {
+        console.log("No data available for all employees");
+      }
+    }
+
+    return res.json({ success: true, data: invoiceList });
+
+  } catch (error) {
+    console.error("Error fetching employee balance table:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};
