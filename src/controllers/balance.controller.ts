@@ -134,3 +134,22 @@ export const getEmployeeBalanceTable = async (req: Request, res: Response) => {
   }
 };
 
+export const getDailyBalance = async (req: Request, res: Response) => {
+  const dbRef = ref(database);
+
+  try {
+    const snapshot = await get(child(dbRef, `dailyBalance`));
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      const balanceList = Object.values(data); // تحويل البيانات إلى قائمة
+      return res.status(200).json(balanceList);
+    } else {
+      console.log("لا توجد بيانات متاحة في dailyBalance.");
+      return res.status(404).json({ message: "لا توجد بيانات متاحة." });
+    }
+  } catch (error: any) {
+    console.error("حدث خطأ أثناء جلب بيانات الأرصدة:", error.message);
+    return res.status(500).json({ error: "فشل في جلب بيانات الأرصدة." });
+  }
+};
+
