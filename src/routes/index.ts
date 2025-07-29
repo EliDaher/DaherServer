@@ -4,6 +4,7 @@ import wifiRoutes from "./wifi.routes";
 import reportRoutes from "./reports.routes";
 import balanceRoutes from "./balance.routes"
 import dealerRoutes from "./dealer.routes"
+import exchangeRoutes from "./exchange.routes"
 
 const router = Router();
 
@@ -16,5 +17,7 @@ router.use("/reports", reportRoutes);
 router.use("/balance", balanceRoutes);
 
 router.use("/dealer", dealerRoutes);
+
+router.use("/exchange", exchangeRoutes);
 
 export default router;
