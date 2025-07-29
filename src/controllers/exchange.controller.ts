@@ -11,8 +11,8 @@ const { database } = require("../../firebaseConfig.js");
 
 export const addPendingExchange = async (req: Request, res: Response) => {
   try {
-    const { sypAmount, usdAmount, details, date } = req.body;
-    if (!sypAmount || !usdAmount || !details || !date) {
+    const { sypAmount, usdAmount, details } = req.body;
+    if (!sypAmount || !usdAmount || !details) {
       return res.status(400).json({ error: "Missing or invalid fields" });
     }
 
@@ -24,7 +24,6 @@ export const addPendingExchange = async (req: Request, res: Response) => {
       sypAmount,
       usdAmount,
       details,
-      date,
       timestamp: Date.now(),
     };
 
@@ -70,8 +69,8 @@ export const deletePendingExchange = async (req: Request, res: Response) => {
 
 export const addDoneExchange = async (req: Request, res: Response) => {
   try {
-    const { sypAmount, usdAmount, details, date } = req.body;
-    if (!sypAmount || !usdAmount || !details || !date) {
+    const { sypAmount, usdAmount, details } = req.body;
+    if (!sypAmount || !usdAmount || !details) {
       return res.status(400).json({ error: "Missing or invalid fields" });
     }
 
@@ -83,7 +82,6 @@ export const addDoneExchange = async (req: Request, res: Response) => {
       sypAmount,
       usdAmount,
       details,
-      date,
       timestamp: Date.now(),
     };
 
