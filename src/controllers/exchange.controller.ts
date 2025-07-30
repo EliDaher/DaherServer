@@ -69,7 +69,7 @@ export const deletePendingExchange = async (req: Request, res: Response) => {
 
 export const addDoneExchange = async (req: Request, res: Response) => {
   try {
-    const { sypAmount, usdAmount, details } = req.body;
+    const { sypAmount, usdAmount, details, finalSYP, finalUSD } = req.body;
     if (!sypAmount || !usdAmount || !details) {
       return res.status(400).json({ error: "Missing or invalid fields" });
     }
@@ -81,6 +81,8 @@ export const addDoneExchange = async (req: Request, res: Response) => {
       id: exchangeID,
       sypAmount,
       usdAmount,
+      finalSYP,
+      finalUSD,
       details,
       timestamp: Date.now(),
     };
