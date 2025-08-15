@@ -22,6 +22,7 @@ export function socketHandler(io: Server) {
           io.to(clients[sender])?.emit("json_message", {
             content: { data: {'حدث حطأ': `هناك طلب موجود من المستخدم ${sender} الرجاء الانتظار حتى انتهائه`} }
           });
+          delete waitingList[sender];
           return;
         } else {
           waitingList[sender] = 'waiting';
