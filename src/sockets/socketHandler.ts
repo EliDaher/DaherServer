@@ -16,11 +16,11 @@ export function socketHandler(io: Server) {
       const target = data.target;
       const sender = data.content.email;
 
-      if (target === 'worker') {
+      if (target == 'worker') {
         if (waitingList[sender]) {
           console.log(`هناك طلب موجود من المستخدم ${sender} الرجاء الانتظار حتى انتهائه`);
           io.to(clients[sender])?.emit("json_message", {
-            content: { data: `هناك طلب موجود من المستخدم ${sender} الرجاء الانتظار حتى انتهائه` }
+            content: { data: {'حدث حطأ': `هناك طلب موجود من المستخدم ${sender} الرجاء الانتظار حتى انتهائه`} }
           });
           return;
         } else {
