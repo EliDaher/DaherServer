@@ -20,7 +20,7 @@ export function socketHandler(io: Server) {
         if (waitingList[sender]) {
           console.log(`هناك طلب موجود من المستخدم ${sender} الرجاء الانتظار حتى انتهائه`);
           io.to(clients[sender])?.emit("json_message", {
-            data: { content: { data: `هناك طلب موجود من المستخدم ${sender} الرجاء الانتظار حتى انتهائه` } }
+            content: { data: `هناك طلب موجود من المستخدم ${sender} الرجاء الانتظار حتى انتهائه` }
           });
           return;
         } else {
