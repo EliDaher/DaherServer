@@ -28,7 +28,7 @@ export function socketHandler(io: Server) {
           waitingList[sender] = 'waiting';
         }
       } else {
-        delete waitingList[sender];
+        delete waitingList[target];
       }
 
       if (clients[target]) {
