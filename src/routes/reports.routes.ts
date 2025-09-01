@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getDebtAgingByBalance, getInvoicesWithStatus, getMonthlyRevenue, listDuplicateInvoices, listWrongNumberInvoices, removeDuplicateInvoices } from "../controllers/report.controller";
+import { fixWrongNumberInvoices, getDebtAgingByBalance, getInvoicesWithStatus, getMonthlyRevenue, listDuplicateInvoices, listWrongNumberInvoices, removeDuplicateInvoices } from "../controllers/report.controller";
 
 const router = Router();
 
@@ -15,6 +15,8 @@ router.get("/listDuplicateInvoices", listDuplicateInvoices);
 router.get("/removeDuplicateInvoices", removeDuplicateInvoices);
 
 router.get("/listWrongNumberInvoices", listWrongNumberInvoices);
+
+router.get("/fixWrongNumberInvoices", fixWrongNumberInvoices);
 
 
 export default router;
