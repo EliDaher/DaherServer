@@ -247,3 +247,33 @@ export const removeDuplicateInvoices = async (req: Request, res: Response) => {
     return res.status(500).json({ error: error.message });
   }
 };
+
+export const listWrongNumberInvoices = async (req: Request, res: Response) => {
+  try {
+    // تحميل الفواتير
+    const invoicesSnap = await get(ref(database, "Invoices"));
+    const invoices = invoicesSnap.val();
+
+    if (!invoices) {
+      return res.status(200).json({ message: "❗ لا يوجد فواتير!" });
+    }
+
+    const seen: any[] = [];
+    Object.entries(invoices).forEach(([id, invoice]: any) => {
+      if (invoice.Date === "2025-08-01" && invoice.Details === "اشتراك شهري عن 08-2025") {
+        seen.push({ id, ...invoice });
+      }
+    });
+
+    return res.status(200).json({
+      message: `✅ تم العثور على ${seen.length} فاتورة مطابقة للشرط.`,
+      seen,
+    });
+
+  } catch (error: any) {
+    console.error("❌ خطأ أثناء البحث عن التكرارات:", error.message);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+
