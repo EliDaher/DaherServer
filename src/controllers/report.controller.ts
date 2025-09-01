@@ -2,7 +2,8 @@ import { Request, Response } from "express";
 const {
   ref,
   get,
-  remove
+  remove,
+  update
 } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 
@@ -275,5 +276,51 @@ export const listWrongNumberInvoices = async (req: Request, res: Response) => {
     return res.status(500).json({ error: error.message });
   }
 };
+
+export const fixWrongNumberInvoices = async (req: Request, res: Response) => {
+  try {
+    // تحميل الفواتير
+    const invoicesSnap = await get(ref(database, "Invoices"));
+    const invoices = invoicesSnap.val();
+
+    if (!invoices) {
+      return res.status(200).json({ message: "❗ لا يوجد فواتير!" });
+    }
+
+    const seen: any[] = [];
+    const updates: any = {};
+
+    Object.entries(invoices).forEach(([id, invoice]: any) => {
+      if (
+        invoice.Date === "2025-08-01" &&
+        invoice.Details === "اشتراك شهري عن 08-2025"
+      ) {
+        seen.push({ id, ...invoice });
+
+        // تجهيز التعديلات
+        updates[`Invoices/${id}/Date`] = "2025-09-01";
+        updates[`Invoices/${id}/Details`] = "اشتراك شهري عن 09-2025";
+      }
+    });
+
+    // تنفيذ التعديلات إذا وجد فواتير
+    if (Object.keys(updates).length > 0) {
+      await update(ref(database), updates);
+    }
+
+    return res.status(200).json({
+      message: `✅ تم العثور على ${seen.length} فاتورة وتم تعديلها.`,
+      seenAfterUpdate: seen.map((inv) => ({
+        ...inv,
+        Date: "2025-09-01",
+        Details: "اشتراك شهري عن 09-2025",
+      })),
+    });
+  } catch (error: any) {
+    console.error("❌ خطأ أثناء البحث عن التكرارات:", error.message);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
 
 
