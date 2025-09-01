@@ -292,14 +292,14 @@ export const fixWrongNumberInvoices = async (req: Request, res: Response) => {
 
     Object.entries(invoices).forEach(([id, invoice]: any) => {
       if (
-        invoice.Date === "2025-08-01" &&
-        invoice.Details === "اشتراك شهري عن 08-2025"
+        invoice.Date === "2025-07-01" &&
+        invoice.Details === "اشتراك شهري عن 07-2025"
       ) {
         seen.push({ id, ...invoice });
 
         // تجهيز التعديلات
-        updates[`Invoices/${id}/Date`] = "2025-09-01";
-        updates[`Invoices/${id}/Details`] = "اشتراك شهري عن 09-2025";
+        updates[`Invoices/${id}/Date`] = "2025-08-01";
+        updates[`Invoices/${id}/Details`] = "اشتراك شهري عن 08-2025";
       }
     });
 
