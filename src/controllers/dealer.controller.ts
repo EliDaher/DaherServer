@@ -57,7 +57,7 @@ export async function getPayments(req: Request, res: Response) {
     const dbRef = ref(database);
 
     // ✅ تحميل جميع الدفعات
-    const paymentsSnap = await get(child(dbRef, "dealerPayments"));
+    const paymentsSnap = await get(child(dbRef, "dealerPayments/habeb"));
     if (!paymentsSnap.exists()) {
       return res.status(404).json({ success: false, message: "❗ لا يوجد دفعات" });
     }
