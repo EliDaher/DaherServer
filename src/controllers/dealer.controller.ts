@@ -61,19 +61,18 @@ export async function getPayments(req: Request, res: Response) {
     if (!paymentsSnap.exists()) {
       return res.status(404).json({ success: false, message: "❗ لا يوجد دفعات" });
     }
-
     const payments = paymentsSnap.val();
 
     // ✅ تحميل جميع المشتركين
     const subscribersSnap = await get(child(dbRef, "Subscribers"));
     const subscribers = subscribersSnap.exists() ? subscribersSnap.val() : {};
 
-    // ✅ ربط بيانات الدفعات مع بيانات المشتركين
-    const result = Object.values(payments).map((payment: any) => {
-      const subscriberData = subscribers[payment.SubscriberID] || null;
-      return {
+    // ✅ ربط الدفعات مع المشتركين
+    const result: any = {};
+    Object.entries(payments).forEach(([key, payment]: [string, any]) => {
+      result[key] = {
         ...payment,
-        subscriber: subscriberData, // 🔗 ربط بيانات المشترك
+        subscriber: subscribers[payment.SubscriberID] || null, // 🔗 إما بيانات أو null
       };
     });
 
@@ -83,4 +82,3 @@ export async function getPayments(req: Request, res: Response) {
     res.status(500).json({ success: false, error: err });
   }
 }
-
