@@ -52,23 +52,35 @@ export default async function addPayment(req: Request, res: Response) {
   }
 }
 
-
 export async function getPayments(req: Request, res: Response) {
   try {
-
     const dbRef = ref(database);
-    const snapshot = await get(child(dbRef, 'dealerPayments')); 
-    if (snapshot.exists()) {
-      const data = snapshot.val();
-      const PaymentsList = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-      res.status(200).json({ success: true, Payments: PaymentsList });
-    } else {
-      console.log("No data available");
-      res.status(401).json({ error: "Failed to fetch data" });
+
+    // ✅ تحميل جميع الدفعات
+    const paymentsSnap = await get(child(dbRef, "dealerPayments"));
+    if (!paymentsSnap.exists()) {
+      return res.status(404).json({ success: false, message: "❗ لا يوجد دفعات" });
     }
-    
+
+    const payments = paymentsSnap.val();
+
+    // ✅ تحميل جميع المشتركين
+    const subscribersSnap = await get(child(dbRef, "Subscribers"));
+    const subscribers = subscribersSnap.exists() ? subscribersSnap.val() : {};
+
+    // ✅ ربط بيانات الدفعات مع بيانات المشتركين
+    const result = Object.values(payments).map((payment: any) => {
+      const subscriberData = subscribers[payment.SubscriberID] || null;
+      return {
+        ...payment,
+        subscriber: subscriberData, // 🔗 ربط بيانات المشترك
+      };
+    });
+
+    res.status(200).json({ success: true, Payments: result });
   } catch (err) {
-    console.error("Error Firebase add dealer payment: ", err);
+    console.error("Error Firebase getPayments: ", err);
     res.status(500).json({ success: false, error: err });
   }
 }
+
