@@ -67,12 +67,12 @@ export async function getPayments(req: Request, res: Response) {
     const subscribersSnap = await get(child(dbRef, "Subscribers"));
     const subscribers = subscribersSnap.exists() ? subscribersSnap.val() : {};
 
-    // ✅ ربط الدفعات مع المشتركين
+    // ✅ تعديل كل دفعة وإضافة بيانات المشترك داخلها
     const result: any = {};
     Object.entries(payments).forEach(([key, payment]: [string, any]) => {
       result[key] = {
         ...payment,
-        subscriber: subscribers[payment.SubscriberID] || null, // 🔗 إما بيانات أو null
+        subscriber: subscribers[payment.SubscriberID] || null,
       };
     });
 
