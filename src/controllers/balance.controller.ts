@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-const { ref, get, child } = require("firebase/database");
+const { ref, get, child, push, set } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 
 interface UserSummary {
@@ -150,6 +150,29 @@ export const getDailyBalance = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("حدث خطأ أثناء جلب بيانات الأرصدة:", error.message);
     return res.status(500).json({ error: "فشل في جلب بيانات الأرصدة." });
+  }
+};
+
+export const addMofadale = async (req: Request, res: Response) => {
+  try {
+    const subscribersRef = ref(database, "mofadale");
+    const newRef = push(subscribersRef);
+    const newMofadale = req.body;
+
+    await set(newRef, newMofadale); 
+
+    res.status(200).json({
+      success: true,
+      message: "تم إضافة المشترك بنجاح ✅",
+      id: newRef.key,
+      data: newMofadale,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "حدث خطأ أثناء الإضافة ❌",
+      error: (error as Error).message,
+    });
   }
 };
 
