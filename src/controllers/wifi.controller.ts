@@ -223,6 +223,19 @@ export const deleteCustomer = async (req: Request, res: Response) => {
     }
 
     const customerRef = ref(database, `Subscribers/${id}`);
+    const customerData = await get(customerRef).then(async (snapshot: any) => {
+      if (!snapshot.exists()) {
+        return res.status(404).json({ success: false, error: "المشترك غير موجود" });
+      }
+      return snapshot.val();
+    });
+
+    const deleteLogRef = ref(database, `delete/${id}`);
+    await set(deleteLogRef, { 
+      ...customerData,
+      deletedAt: new Date().toISOString() 
+    });
+
     await remove(customerRef);
 
     res
