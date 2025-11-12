@@ -5,7 +5,7 @@ const { database } = require("../../firebaseConfig.js");
 export const searchInvoices = async (req: Request, res: Response) => {
   const { searchValue } = req.body;
 
-  if (!searchValue) {
+  if (!searchValue || !searchValue.toString().trim()) {
     return res.status(400).json({ error: "Search value is required" });
   }
 
@@ -18,39 +18,38 @@ export const searchInvoices = async (req: Request, res: Response) => {
     }
 
     const results: any[] = [];
+    const search = searchValue.toString().toLowerCase().trim();
 
-    snapshot.forEach((dateSnapshot) => {
-      const date = dateSnapshot.key;
+    snapshot.forEach((dateSnap) => {
+      const date = dateSnap.key;
 
-      dateSnapshot.forEach((employeeSnapshot) => {
-        const employee = employeeSnapshot.key;
+      dateSnap.forEach((employeeSnap) => {
+        const employee = employeeSnap.key;
 
-        employeeSnapshot.forEach((invoiceSnapshot) => {
-          const invoice = invoiceSnapshot.key;
-          const invoiceData = invoiceSnapshot.val();
+        employeeSnap.forEach((invoiceSnap) => {
+          const invoiceData = invoiceSnap.val();
 
-          // تأكد من أن details كائن فعلاً
           if (
             invoiceData &&
             invoiceData.details &&
             typeof invoiceData.details === "object"
           ) {
             Object.values(invoiceData.details).forEach((detail: any) => {
-              const customerDetails =
-                detail.customerDetails?.toString().toLowerCase() || "";
-              const search = searchValue.toString().toLowerCase();
+              const name = detail.customerName?.toLowerCase() || "";
+              const details = detail.customerDetails?.toLowerCase() || "";
+              const number = detail.customerNumber?.toString() || "";
+              const invoiceNumber = detail.invoiceNumber?.toString() || "";
 
               if (
-                detail.customerNumber?.toString() === searchValue ||
-                customerDetails.includes(search) ||
-                detail.invoiceNumber?.toString().includes(search)
+                name.includes(search) ||
+                details.includes(search) ||
+                number.includes(search) ||
+                invoiceNumber.includes(search)
               ) {
                 results.push({
                   date,
                   employee,
-                  invoice,
-                  amount: invoiceData.amount,
-                  matchingDetail: detail,
+                  invoiceData, // يحتوي كل التفاصيل بما فيها details وamount وtimestamp
                 });
               }
             });
@@ -59,9 +58,11 @@ export const searchInvoices = async (req: Request, res: Response) => {
       });
     });
 
-    return res.json(
-      results.length > 0 ? results : { message: "No matching data found" }
-    );
+    if (results.length === 0) {
+      return res.status(404).json({ message: "No matching data found" });
+    }
+
+    return res.json(results);
   } catch (error: any) {
     console.error("Error searching invoices:", error);
     return res.status(500).json({ error: error.message });
