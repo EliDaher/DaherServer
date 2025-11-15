@@ -23,9 +23,21 @@ export function socketHandler(io: Server) {
       message: string;
       data?: any;
     }) {
-      const date = new Date().toISOString().split("T")[0];
       const id = uuid();
     
+      const now = new Date();
+
+      const time = now.toLocaleTimeString("ar-EG", {
+        hour12: false,
+        timeZone: "Asia/Damascus",
+      });
+
+      const date = now
+        .toLocaleDateString("ar-EG", {
+          timeZone: "Asia/Damascus",
+        })
+        .replace(/\//g, "-"); 
+
       const dbRef = ref(database, `astalamatLogs/${date}/${id}`);
       const log = {
         id,
@@ -34,8 +46,8 @@ export function socketHandler(io: Server) {
         target,
         message,
         data: data || null,
-        date: new Date().toISOString().split("T")[0],
-        time: new Date().toLocaleTimeString("ar-EG", { hour12: false }),
+        date: date,
+        time: time,
         timestamp: Date.now(),
       };
     
