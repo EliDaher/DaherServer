@@ -27,16 +27,14 @@ export function socketHandler(io: Server) {
     
       const now = new Date();
 
-      const time = now.toLocaleTimeString("ar-EG", {
-        hour12: false,
+      const time = now.toLocaleTimeString("en-EG", {
+        hour12: true,
         timeZone: "Asia/Damascus",
       });
 
-      const date = now
-        .toLocaleDateString("ar-EG", {
-          timeZone: "Asia/Damascus",
-        })
-        .replace(/\//g, "-"); 
+      const date = now.toLocaleDateString("en-CA", {
+        timeZone: "Asia/Damascus",
+      });
 
       const dbRef = ref(database, `astalamatLogs/${date}/${id}`);
       const log = {
