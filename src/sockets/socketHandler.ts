@@ -97,15 +97,12 @@ export function socketHandler(io: Server) {
 
     socket.on("json_message", (data) => {
       const target = data.target;
-      const sender = data?.content?.email;
+      const sender = data?.content?.email || "unknown";
       if (!target) {
         console.log("⚠️ No target specified in message:", data);
         return;
       }
-      if (!sender) {
-        console.log("⚠️ No sender email specified in message content:", data);
-        return;
-      }
+      
 
       if (target == "worker") {
         if (waitingList[sender]) {
