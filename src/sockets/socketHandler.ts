@@ -6,43 +6,58 @@ import { v4 as uuid } from "uuid";
 const clients: Record<string, string> = {};
 const waitingList: Record<string, string> = {};
 
-
-
-export async function createLog({ type, from, target, message, data } : { type: string; from: string; target: string; message: string; data?: any }) {
-  const date = new Date().toISOString().split("T")[0];
-  const id = uuid();
-
-  const dbRef = ref(database, `astalamatLogs/${date}/${id}`);
-
-  await set(dbRef, {
-    id,
-    type,
-    from,
-    target,
-    message,
-    data: data || null,
-    date: new Date().toISOString().split("T")[0], // 2025-02-15
-    time: new Date().toLocaleTimeString("ar-EG", { hour12: false }), // HH:MM:SS
-    timestamp: Date.now(),
-  });
-}
-
-
 export function socketHandler(io: Server) {
   io.on("connection", (socket: Socket) => {
+
     
+    async function createLog({
+      type,
+      from,
+      target,
+      message,
+      data,
+    }: {
+      type: string;
+      from: string;
+      target: string;
+      message: string;
+      data?: any;
+    }) {
+      const date = new Date().toISOString().split("T")[0];
+      const id = uuid();
+    
+      const dbRef = ref(database, `astalamatLogs/${date}/${id}`);
+      const log = {
+        id,
+        type,
+        from,
+        target,
+        message,
+        data: data || null,
+        date: new Date().toISOString().split("T")[0],
+        time: new Date().toLocaleTimeString("ar-EG", { hour12: false }),
+        timestamp: Date.now(),
+      };
+    
+      await set(dbRef, log);
+      io.emit("createLog", log);
+
+    }
+
     console.log("📌 Client connected:", socket.id);
 
     socket.on("register", async (name: string) => {
       clients[name] = socket.id;
       console.log(`✅ ${name} registered with id: ${socket.id}`);
+
       try {
         await createLog({
           type: "register",
           from: name,
           target: "server",
           message: `Socket ID ${socket.id}, with name ${name} connected`,
-        })
+        });
+
       } catch (error) {
         console.error("Error creating log for register:", error);
       }
@@ -56,7 +71,7 @@ export function socketHandler(io: Server) {
           target: data.target,
           message: data.message,
           data: data.data || null,
-        })
+        });
       } catch (error) {
         console.error("Error creating log from socket event:", error);
       }
@@ -80,16 +95,22 @@ export function socketHandler(io: Server) {
         return;
       }
 
-      if (target == 'worker') {
+      if (target == "worker") {
         if (waitingList[sender]) {
-          console.log(`هناك طلب موجود من المستخدم ${sender} الرجاء اعادة المحاولة لاحقاً`);
+          console.log(
+            `هناك طلب موجود من المستخدم ${sender} الرجاء اعادة المحاولة لاحقاً`
+          );
           io.to(clients[sender])?.emit("json_message", {
-            content: { data: {'حدث حطأ': `هناك طلب موجود من المستخدم ${sender} الرجاء اعادة المحاولة لاحقاً`} }
+            content: {
+              data: {
+                "حدث حطأ": `هناك طلب موجود من المستخدم ${sender} الرجاء اعادة المحاولة لاحقاً`,
+              },
+            },
           });
           delete waitingList[sender];
           return;
         } else {
-          waitingList[sender] = 'waiting';
+          waitingList[sender] = "waiting";
         }
       } else {
         delete waitingList[target];
@@ -103,10 +124,8 @@ export function socketHandler(io: Server) {
     });
 
     socket.on("disconnect", async () => {
-
       console.log("❌ Client disconnected:", socket.id);
 
-      
       for (const name in clients) {
         if (clients[name] === socket.id) {
           delete clients[name];
@@ -123,7 +142,6 @@ export function socketHandler(io: Server) {
           break;
         }
       }
-
     });
   });
 }
