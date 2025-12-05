@@ -73,6 +73,37 @@ export function socketHandler(io: Server) {
       }
     });
 
+    socket.on("getActive", (data) => {
+      console.log("Received getActive from client:", socket.id);
+
+      const workerSocketId = clients["PPPworker"]; // Python client
+      if (workerSocketId) {
+        io.to(workerSocketId).emit("getActive"); // توجيه الحدث للـ Python client
+      } else {
+        console.log("⚠️ Worker client not connected");
+      }
+    });
+
+    socket.on("getInterface", (data) => {
+      console.log("Received getInterface from client:", data);
+
+      const workerSocketId = clients["PPPworker"];
+      if (workerSocketId) {
+        io.to(workerSocketId).emit("getInterface", data);
+      } else {
+        console.log("⚠️ Worker client not connected");
+      }
+    });
+    
+    socket.on("returnActivePPP", (data) => {
+      console.log("Received ActivePPP from worker:", data);
+
+      const reactSocketId = clients["reactUser"];
+      if (reactSocketId) {
+        io.to(reactSocketId).emit("returnActivePPP", data);
+      }
+    });
+
     socket.on("createLog", async (data) => {
       try {
         await createLog({
