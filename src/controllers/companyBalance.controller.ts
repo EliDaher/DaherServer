@@ -6,7 +6,7 @@ const { database } = require("../../firebaseConfig.js");
 
 export const createCompany = async (req: Request, res: Response) => {
     try {
-        const { name, initialBalance } = req.body;
+        const { name, initialBalance, balanceLimit } = req.body;
 
         const companiesRef = ref(database, 'companies');
         const newCompanyRef = push(companiesRef);
@@ -16,6 +16,7 @@ export const createCompany = async (req: Request, res: Response) => {
           createdAt: new Date().toISOString(),
           lastUpdate: new Date().toISOString(),
           id: newCompanyRef.key,
+          balanceLimit
         };
         await set(newCompanyRef, newCompanyData);
 

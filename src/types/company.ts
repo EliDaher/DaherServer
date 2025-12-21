@@ -1,9 +1,10 @@
 export interface Company {
-    id: string;
-    name: string;
-    balance: number;
-    createdAt: string;
-    lastUpdate: string;
+  id: string;
+  name: string;
+  balance: number;
+  createdAt: string;
+  lastUpdate: string;
+  balanceLimit: number;
 }
 
 export interface BalanceLog {
