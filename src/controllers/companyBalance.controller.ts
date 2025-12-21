@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { Company } from "../types/company";
+import { addPortOprationInternal } from "./ports.controller";
 const { ref, get, child, push, set } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 
@@ -63,6 +64,14 @@ export const decreaseBalance = async (req: Request, res: Response) => {
             afterBalance: newBalance,
             date: new Date().toISOString(),
         });
+
+        addPortOprationInternal(
+            {
+                executorName: '',
+                operationType: 'POSInvoice',
+                note: `فاتورة انترنت للرقم ${number} في شركة ${company} بقيمة ${amount}`,
+            }
+        );
 
         res.status(200).json({ message: "Balance decreased successfully", success: true });
 
@@ -181,7 +190,7 @@ export const getLogsByDate = async (req: Request, res: Response) => {
       count: result.length,
       logs: result,
     });
-    
+
   } catch (error) {
     console.error("Error fetching company logs:", error);
     res.status(500).json({ error: "Failed to fetch company logs" });

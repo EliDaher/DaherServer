@@ -6,10 +6,28 @@ import { v4 as uuid } from "uuid";
 const clients: Record<string, string> = {};
 const waitingList: Record<string, string> = {};
 
-export function socketHandler(io: Server) {
-  io.on("connection", (socket: Socket) => {
+let globalIo: Server;
 
-    
+export const emitToUser = (username: string, event: string, data: any) => {
+  if (!globalIo) {
+    console.warn("Socket.IO not initialized");
+    return;
+  }
+
+  const socketId = clients[username];
+  if (!socketId) {
+    console.warn(`User ${username} not connected`);
+    return;
+  }
+
+  globalIo.to(socketId).emit(event, data);
+};
+
+
+export function socketHandler(io: Server) {
+  globalIo = io; // 🔥 ربط io العام
+
+  io.on("connection", (socket: Socket) => {
     async function createLog({
       type,
       from,
@@ -24,7 +42,7 @@ export function socketHandler(io: Server) {
       data?: any;
     }) {
       const id = uuid();
-    
+
       const now = new Date();
 
       const time = now.toLocaleTimeString("en-EG", {
@@ -48,10 +66,9 @@ export function socketHandler(io: Server) {
         time: time,
         timestamp: Date.now(),
       };
-    
+
       await set(dbRef, log);
       io.emit("createLog", log);
-
     }
 
     console.log("📌 Client connected:", socket.id);
@@ -67,7 +84,6 @@ export function socketHandler(io: Server) {
           target: "server",
           message: `Socket ID ${socket.id}, with name ${name} connected`,
         });
-
       } catch (error) {
         console.error("Error creating log for register:", error);
       }
@@ -94,13 +110,23 @@ export function socketHandler(io: Server) {
         console.log("⚠️ Worker client not connected");
       }
     });
-    
+
     socket.on("returnActivePPP", (data) => {
       console.log("Received ActivePPP from worker:", data);
 
       const reactSocketId = clients["reactUser"];
       if (reactSocketId) {
         io.to(reactSocketId).emit("returnActivePPP", data);
+      }
+    });
+
+
+    socket.on("sendPortLog", (data) => {
+      console.log("Received ActivePPP from worker:", data);
+
+      const reactSocketId = clients["reactUser"];
+      if (reactSocketId) {
+        io.to(reactSocketId).emit("sendPortLog", data);
       }
     });
 
@@ -131,7 +157,6 @@ export function socketHandler(io: Server) {
         console.log("⚠️ No target specified in message:", data);
         return;
       }
-      
 
       if (target == "worker") {
         if (waitingList[sender]) {
@@ -183,3 +208,5 @@ export function socketHandler(io: Server) {
     });
   });
 }
+
+
