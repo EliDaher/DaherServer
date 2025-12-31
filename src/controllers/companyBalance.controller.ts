@@ -67,11 +67,11 @@ export const decreaseBalance = async (req: Request, res: Response) => {
         });
 
         addPortOprationInternal(
-            {
-                executorName: '',
-                operationType: 'POSInvoice',
-                note: `فاتورة انترنت للرقم ${number} في شركة ${company} بقيمة ${amount}`,
-            }
+          {
+            executorName: port,
+            operationType: 'POSInvoice',
+            note: `فاتورة انترنت للرقم ${number} في شركة ${company} بقيمة ${amount}`,
+          }
         );
 
         res.status(200).json({ message: "Balance decreased successfully", success: true });
@@ -127,6 +127,12 @@ export const increaseBalance = async (req: Request, res: Response) => {
               timeStamp: new Date().toISOString(),
             });
         }
+          
+          addPortOprationInternal({
+            executorName: port,
+            operationType: "CompanyIncrease",
+            note: `زيادة رصيد في شركة ${company} بقيمة ${amount}`,
+          });
 
           res
             .status(200)
