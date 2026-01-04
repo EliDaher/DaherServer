@@ -34,26 +34,28 @@ export const decreaseBalance = async (req: Request, res: Response) => {
         const { amount, reason, company, number, companyId, port } = req.body;
         const date = new Date().toISOString().split("T")[0];
         
-        const companiesRef = ref(database, `companies/${companyId}`);
+        if (companyId != ''){
 
-        const snapshot = await get(companiesRef);
-        if (!snapshot.exists()) {
+          const companiesRef = ref(database, `companies/${companyId}`);
+          
+          const snapshot = await get(companiesRef);
+          if (!snapshot.exists()) {
             return res.status(404).json({ error: "Company not found" });
-        }
-
-        const companyData: Company = snapshot.val();
-        const currentBalance = companyData.balance || 0;
-        const newBalance = currentBalance - amount;
-
-        await set(companiesRef, {
-          ...companyData,
-          balance: newBalance,
-          lastUpdate: new Date().toISOString(),
-        });
-
-        const balanceLogsRef = ref(database, `balanceLogs/${date}`);
-        const newLogRef = push(balanceLogsRef);
-        await set(newLogRef, {
+          }
+          
+          const companyData: Company = snapshot.val();
+          const currentBalance = companyData.balance || 0;
+          const newBalance = currentBalance - amount;
+          
+          await set(companiesRef, {
+            ...companyData,
+            balance: newBalance,
+            lastUpdate: new Date().toISOString(),
+          });
+          
+          const balanceLogsRef = ref(database, `balanceLogs/${date}`);
+          const newLogRef = push(balanceLogsRef);
+          await set(newLogRef, {
             type: "decrease",
             amount,
             reason,
@@ -64,8 +66,9 @@ export const decreaseBalance = async (req: Request, res: Response) => {
             beforeBalance: companyData.balance,
             afterBalance: newBalance,
             date: new Date().toISOString(),
-        });
-
+          });
+        }
+          
         addPortOprationInternal(
           {
             executorName: port,
