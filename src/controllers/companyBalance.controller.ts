@@ -53,6 +53,18 @@ export const decreaseBalance = async (req: Request, res: Response) => {
             lastUpdate: new Date().toISOString(),
           });
           
+          console.log({
+            type: "decrease",
+            amount,
+            reason,
+            company,
+            companyId,
+            number,
+            port,
+            beforeBalance: companyData.balance,
+            afterBalance: newBalance,
+            date: new Date().toISOString(),
+          });
           const balanceLogsRef = ref(database, `balanceLogs/${date}`);
           const newLogRef = push(balanceLogsRef);
           await set(newLogRef, {
