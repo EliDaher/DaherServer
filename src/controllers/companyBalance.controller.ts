@@ -176,8 +176,12 @@ export const getAllCompaniesBalances = async (req: Request, res: Response) => {
 
 export const getLogsByDate = async (req: Request, res: Response) => {
   try {
-    const { fromDate, toDate } = req.body;
-
+    
+    const { fromDate, toDate } = req.query as {
+      fromDate?: string;
+      toDate?: string;
+    };
+    
     if (!fromDate || !toDate) {
       return res
         .status(400)
