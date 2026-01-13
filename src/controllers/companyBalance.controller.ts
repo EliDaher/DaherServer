@@ -130,18 +130,23 @@ export const increaseBalance = async (req: Request, res: Response) => {
         });
 
 
-        if (paidAmount && paidAmount > 0) {
-            const InvoiceRef = ref(database, `dailyTotal/${date}/mahal`);
-            const newInvoiceRef = push(InvoiceRef);
+       if (paidAmount && paidAmount > 0) {
+         const InvoiceRef = ref(database, `dailyTotal/${date}/mahal`);
+         const newInvoiceRef = push(InvoiceRef);
 
-            await set(newInvoiceRef, {
-              amount: Number(amount),
-              employee: 'mahal',
-              details: paymentNote || `ايداع رصيد ${company}`,
-              date: date,
-              timeStamp: new Date().toISOString(),
-            });
-        }
+         await set(newInvoiceRef, {
+           amount: Number(-paidAmount),
+           details: {
+             customerDetails: paymentNote || "هرم رصيد",
+             customerName: port || "mahal",
+             customerNumber: "0",
+             invoiceNumber: "0",
+             invoiceValue: Number(-paidAmount),
+           },
+           employee: port || "mahal",
+           timestamp: date,
+         });
+       }
           
           addPortOprationInternal({
             executorName: port,
