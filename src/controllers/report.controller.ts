@@ -1,5 +1,13 @@
 import { Request, Response } from "express";
-const { ref, get, remove, update, child } = require("firebase/database");
+const {
+  ref,
+  get,
+  remove,
+  update,
+  child,
+  push,
+  set,
+} = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 
 export const getMonthlyRevenue = async (req: Request, res: Response) => {
@@ -337,7 +345,7 @@ export const getInquiryLogs = async (req: Request, res: Response) => {
     const data = snapshot.val();
 
     const logsArray = Object.values(data).sort(
-      (a: any, b: any) => a.timestamp - b.timestamp
+      (a: any, b: any) => a.timestamp - b.timestamp,
     );
 
     return res.status(200).json({
@@ -351,5 +359,67 @@ export const getInquiryLogs = async (req: Request, res: Response) => {
       message: "حدث خطأ أثناء جلب البيانات",
       error: error.message,
     });
+  }
+};
+
+export const AddSigSamer = async (req: Request, res: Response) => {
+  try {
+    const { firstName, lastName, number, email, country, camp } = req.body;
+
+    if (!firstName || !lastName || !number || !email || !country || !camp) {
+      return res
+        .status(400)
+        .json({ error: "يرجى تعبئة جميع الحقول المطلوبة." });
+    }
+
+    const subscribersRef = ref(database, "Signatures");
+    const newRef = push(subscribersRef);
+
+    const newSignatures = {
+      id: newRef.key,
+      firstName,
+      lastName,
+      number,
+      email,
+      country,
+      camp,
+      createdAt: new Date().toISOString(),
+      timestamp: Date.now(),
+    };
+
+    await set(newRef, newSignatures); // هكذا تستدعي set
+
+    res.status(200).json({
+      success: true,
+      message: "تم إضافة المشترك بنجاح ✅",
+      id: newRef.key,
+      data: newSignatures,
+    });
+  } catch (error) {
+    console.error("❌ خطأ في الإضافة إلى Firebase:", error);
+    res
+      .status(500)
+      .json({ error: "فشل في إضافة البيانات إلى قاعدة البيانات." });
+  }
+};
+
+export const getSignatures = async (req: Request, res: Response) => {
+  try {
+    const dbRef = ref(database);
+    const snapshot = await get(child(dbRef, "Signatures"));
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      const usersList = Object.keys(data).map((key) => ({
+        id: key,
+        ...data[key],
+      }));
+      res.status(200).json({ success: true, customers: usersList });
+    } else {
+      console.log("No data available");
+      res.status(401).json({ error: "Failed to fetch data" });
+    }
+  } catch (error) {
+    console.error("Error Firebase Login: ", error);
+    res.status(500).json({ error: "Failed to fetch data" });
   }
 };

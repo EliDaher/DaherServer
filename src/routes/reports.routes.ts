@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { fixWrongNumberInvoices, getDebtAgingByBalance, getInquiryLogs, getInvoicesWithStatus, getMonthlyRevenue, listDuplicateInvoices, listWrongNumberInvoices, removeDuplicateInvoices } from "../controllers/report.controller";
+import { AddSigSamer, fixWrongNumberInvoices, getDebtAgingByBalance, getInquiryLogs, getInvoicesWithStatus, getMonthlyRevenue, getSignatures, listDuplicateInvoices, listWrongNumberInvoices, removeDuplicateInvoices } from "../controllers/report.controller";
 
 const router = Router();
 
@@ -19,6 +19,10 @@ router.get("/listWrongNumberInvoices", listWrongNumberInvoices);
 router.get("/fixWrongNumberInvoices", fixWrongNumberInvoices);
 
 router.get("/InquiryLogs", getInquiryLogs);
+
+router.get("/getAllSignatures", getSignatures);
+
+router.post("/addSignature", AddSigSamer);
 
 
 export default router;
