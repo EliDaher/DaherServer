@@ -249,7 +249,7 @@ export const deleteCustomer = async (req: Request, res: Response) => {
 
 export const addPayment = async (req: Request, res: Response) => {
   try {
-    const { amount, date, details, subscriberID, total, dealer } = req.body;
+    const { amount, date, details, subscriberID, total, dealer, type } = req.body;
 
     if (
       !amount ||
@@ -272,6 +272,7 @@ export const addPayment = async (req: Request, res: Response) => {
       PaymentID: paymentID,
       SubscriberID: subscriberID,
       id: paymentID,
+      type: type,
     };
 
     // حفظ في Payments
