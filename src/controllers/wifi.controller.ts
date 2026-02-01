@@ -272,7 +272,7 @@ export const addPayment = async (req: Request, res: Response) => {
       PaymentID: paymentID,
       SubscriberID: subscriberID,
       id: paymentID,
-      type: type,
+      type: type || 'cash',
     };
 
     // حفظ في Payments
