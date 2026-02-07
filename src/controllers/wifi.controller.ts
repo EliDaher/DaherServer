@@ -121,73 +121,103 @@ export const getCustomerById = async (req: Request, res: Response) => {
   }
 };
 
+
 export const getTransactionsForCustomer = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { subscriberID } = req.params;
 
+    /**
+     * 🔑 توحيد نوع SubscriberID
+     * Firebase يفرق بين الرقم والنص
+     */
+    const normalizedSubscriberID = isNaN(Number(subscriberID))
+      ? subscriberID
+      : Number(subscriberID);
+
+    // مراجع Firebase
     const invoicesRef = ref(database, "Invoices");
     const paymentsRef = ref(database, "Payments");
 
+    // الاستعلامات
     const invoicesQuery = query(
       invoicesRef,
       orderByChild("SubscriberID"),
-      equalTo(subscriberID)
+      equalTo(normalizedSubscriberID),
     );
+
     const paymentsQuery = query(
       paymentsRef,
       orderByChild("SubscriberID"),
-      equalTo(subscriberID)
+      equalTo(normalizedSubscriberID),
     );
 
+    // تنفيذ الاستعلامات معًا
     const [invoicesSnap, paymentsSnap] = await Promise.all([
       get(invoicesQuery),
       get(paymentsQuery),
     ]);
 
-    const transactions: any[] = [];
+    const transactions: {
+      id: string;
+      type: "invoice" | "payment";
+      amount: number;
+      date: string;
+      Details: string;
+    }[] = [];
 
+    // معالجة الفواتير
     if (invoicesSnap.exists()) {
       const invoicesData = invoicesSnap.val();
-      for (const key in invoicesData) {
+
+      Object.entries(invoicesData).forEach(([key, invoice]: any) => {
         transactions.push({
           id: key,
           type: "invoice",
-          amount: invoicesData[key].Amount,
-          date: invoicesData[key].Date,
-          Details: invoicesData[key].Details || "",
+          amount: Number(invoice.Amount) || 0,
+          date: invoice.Date,
+          Details: invoice.Details || "",
         });
-      }
+      });
     }
 
+    // معالجة الدفعات
     if (paymentsSnap.exists()) {
       const paymentsData = paymentsSnap.val();
-      for (const key in paymentsData) {
+
+      Object.entries(paymentsData).forEach(([key, payment]: any) => {
         transactions.push({
           id: key,
           type: "payment",
-          amount: paymentsData[key].Amount,
-          date: paymentsData[key].Date,
-          Details: paymentsData[key].Details || "",
+          amount: Number(payment.Amount) || 0,
+          date: payment.Date,
+          Details: payment.Details || "",
         });
-      }
+      });
     }
 
-    // ترتيب حسب التاريخ تنازليًا
+    // ترتيب حسب التاريخ (الأحدث أولًا)
     transactions.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
 
-    res.status(200).json({ success: true, data: transactions });
+    return res.status(200).json({
+      success: true,
+      count: transactions.length,
+      data: transactions,
+    });
   } catch (error) {
     console.error("Error fetching transactions:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "حدث خطأ أثناء جلب المعاملات" });
+
+    return res.status(500).json({
+      success: false,
+      message: "حدث خطأ أثناء جلب المعاملات",
+    });
   }
 };
+
 
 export const updateCustomer = async (req: Request, res: Response) => {
   try {
@@ -279,7 +309,7 @@ export const addPayment = async (req: Request, res: Response) => {
     await set(newPaymentRef, formData);
 
     // حفظ في dealerPayments إذا وُجد dealer
-    if (dealer) {
+    if (dealer) { 
       const dealerPaymentRef = ref(
         database,
         `dealerPayments/${dealer}/${paymentID}`
