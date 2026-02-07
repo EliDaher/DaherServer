@@ -122,6 +122,9 @@ export const getCustomerById = async (req: Request, res: Response) => {
 };
 
 
+
+
+
 export const getTransactionsForCustomer = async (
   req: Request,
   res: Response,
@@ -129,50 +132,65 @@ export const getTransactionsForCustomer = async (
   try {
     const { subscriberID } = req.params;
 
-    /**
-     * 🔑 توحيد نوع SubscriberID
-     * Firebase يفرق بين الرقم والنص
-     */
-    const normalizedSubscriberID = isNaN(Number(subscriberID))
-      ? subscriberID
-      : Number(subscriberID);
+    const subscriberIdAsNumber = Number(subscriberID);
+    const subscriberIdAsString = String(subscriberID);
 
-    // مراجع Firebase
     const invoicesRef = ref(database, "Invoices");
     const paymentsRef = ref(database, "Payments");
 
-    // الاستعلامات
-    const invoicesQuery = query(
-      invoicesRef,
-      orderByChild("SubscriberID"),
-      equalTo(normalizedSubscriberID),
-    );
+    // 🔹 استعلامات الفواتير
+    const invoiceQueries = [
+      query(
+        invoicesRef,
+        orderByChild("SubscriberID"),
+        equalTo(subscriberIdAsString),
+      ),
+    ];
 
-    const paymentsQuery = query(
-      paymentsRef,
-      orderByChild("SubscriberID"),
-      equalTo(normalizedSubscriberID),
-    );
+    if (!isNaN(subscriberIdAsNumber)) {
+      invoiceQueries.push(
+        query(
+          invoicesRef,
+          orderByChild("SubscriberID"),
+          equalTo(subscriberIdAsNumber),
+        ),
+      );
+    }
 
-    // تنفيذ الاستعلامات معًا
-    const [invoicesSnap, paymentsSnap] = await Promise.all([
-      get(invoicesQuery),
-      get(paymentsQuery),
-    ]);
+    // 🔹 استعلامات الدفعات
+    const paymentQueries = [
+      query(
+        paymentsRef,
+        orderByChild("SubscriberID"),
+        equalTo(subscriberIdAsString),
+      ),
+    ];
 
-    const transactions: {
-      id: string;
-      type: "invoice" | "payment";
-      amount: number;
-      date: string;
-      Details: string;
-    }[] = [];
+    if (!isNaN(subscriberIdAsNumber)) {
+      paymentQueries.push(
+        query(
+          paymentsRef,
+          orderByChild("SubscriberID"),
+          equalTo(subscriberIdAsNumber),
+        ),
+      );
+    }
+
+    // تنفيذ جميع الاستعلامات
+    const invoiceSnaps = await Promise.all(invoiceQueries.map(get));
+    const paymentSnaps = await Promise.all(paymentQueries.map(get));
+
+    const transactions: any[] = [];
+    const usedIds = new Set<string>();
 
     // معالجة الفواتير
-    if (invoicesSnap.exists()) {
-      const invoicesData = invoicesSnap.val();
+    invoiceSnaps.forEach((snap: any) => {
+      if (!snap.exists()) return;
 
-      Object.entries(invoicesData).forEach(([key, invoice]: any) => {
+      Object.entries(snap.val()).forEach(([key, invoice]: any) => {
+        if (usedIds.has(key)) return;
+
+        usedIds.add(key);
         transactions.push({
           id: key,
           type: "invoice",
@@ -181,13 +199,16 @@ export const getTransactionsForCustomer = async (
           Details: invoice.Details || "",
         });
       });
-    }
+    });
 
     // معالجة الدفعات
-    if (paymentsSnap.exists()) {
-      const paymentsData = paymentsSnap.val();
+    paymentSnaps.forEach((snap: any) => {
+      if (!snap.exists()) return;
 
-      Object.entries(paymentsData).forEach(([key, payment]: any) => {
+      Object.entries(snap.val()).forEach(([key, payment]: any) => {
+        if (usedIds.has(key)) return;
+
+        usedIds.add(key);
         transactions.push({
           id: key,
           type: "payment",
@@ -196,7 +217,7 @@ export const getTransactionsForCustomer = async (
           Details: payment.Details || "",
         });
       });
-    }
+    });
 
     // ترتيب حسب التاريخ (الأحدث أولًا)
     transactions.sort(
@@ -210,14 +231,12 @@ export const getTransactionsForCustomer = async (
     });
   } catch (error) {
     console.error("Error fetching transactions:", error);
-
     return res.status(500).json({
       success: false,
       message: "حدث خطأ أثناء جلب المعاملات",
     });
   }
 };
-
 
 export const updateCustomer = async (req: Request, res: Response) => {
   try {
