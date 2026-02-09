@@ -581,9 +581,9 @@ export const verifyBalances = async (req: Request, res: Response) => {
 
 export const addWifiExpenses = async (req: Request, res: Response) => {
   try {
-    const { amount, details, date } = req.body;
+    const { amount, details, date, type } = req.body;
 
-    if (!amount || isNaN(amount) || !details || !details.trim()) {
+    if (!amount || isNaN(amount) || !details || !details.trim() || !type) {
       return res.status(400).json({ error: "Invalid input data" });
     }
 
@@ -596,6 +596,7 @@ export const addWifiExpenses = async (req: Request, res: Response) => {
       id: newExpenseRef.key,
       amount: Number(amount),
       employee: "elidaher",
+      type: type.trim(),
       details: details.trim(),
       timestamp: date,
     };
