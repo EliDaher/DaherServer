@@ -45,7 +45,9 @@ export default async function addPayment(req: Request, res: Response) {
       return newTotal;
     });
 
-    res.status(200).json({ message: "Payment added successfully", paymentID, newTotal });
+    res
+      .status(200)
+      .json({ message: "Payment added successfully", paymentID, newTotal });
   } catch (err) {
     console.error("Error Firebase add dealer payment: ", err);
     res.status(500).json({ success: false, error: err });
@@ -56,24 +58,30 @@ export async function getPayments(req: Request, res: Response) {
   try {
     const dbRef = ref(database);
 
-    // ✅ تحميل جميع الدفعات
-    const paymentsSnap = await get(child(dbRef, "dealerPayments/habeb"));
+    const paymentsSnap = await get(child(dbRef, "Payments"));
     if (!paymentsSnap.exists()) {
-      return res.status(404).json({ success: false, message: "❗ لا يوجد دفعات" });
+      return res
+        .status(404)
+        .json({ success: false, message: "❗ لا يوجد دفعات" });
     }
+
     const payments = paymentsSnap.val();
 
-    // ✅ تحميل جميع المشتركين
     const subscribersSnap = await get(child(dbRef, "Subscribers"));
     const subscribers = subscribersSnap.exists() ? subscribersSnap.val() : {};
 
-    // ✅ تعديل كل دفعة وإضافة بيانات المشترك داخلها
     const result: any = {};
+
     Object.entries(payments).forEach(([key, payment]: [string, any]) => {
-      result[key] = {
-        ...payment,
-        subscriber: subscribers[payment.SubscriberID] || null,
-      };
+      const subscriber = subscribers[payment.SubscriberID];
+
+      // ✅ فقط المشتركين dealer = habeb
+      if (subscriber?.dealer === "habeb") {
+        result[key] = {
+          ...payment,
+          subscriber,
+        };
+      }
     });
 
     res.status(200).json({ success: true, Payments: result });
