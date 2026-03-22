@@ -7,6 +7,7 @@ import dealerRoutes from "./dealer.routes"
 import exchangeRoutes from "./exchange.routes"
 import invoicesRoutes from "./invoice.routes"
 import companiesRoutes from "./companyBalance.routes"
+import dashboardRoutes from "./dashboard.routes"
 
 const router = Router();
 
@@ -25,5 +26,7 @@ router.use("/exchange", exchangeRoutes);
 router.use("/invoices", invoicesRoutes);
 
 router.use("/company", companiesRoutes);
+
+router.use("/dashboard", dashboardRoutes);
 
 export default router;

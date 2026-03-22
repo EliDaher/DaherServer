@@ -1,0 +1,18 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const wifi_controller_1 = require("../controllers/wifi.controller");
+const router = (0, express_1.Router)();
+router.get("/getCustomers", wifi_controller_1.getCustomers);
+router.post("/addCustomer", wifi_controller_1.addCustomers);
+router.get("/getCustomerById/:id", wifi_controller_1.getCustomerById);
+router.get("/getTransactionsForCustomer/:subscriberID", wifi_controller_1.getTransactionsForCustomer);
+router.put("/updateCustomer/:id", wifi_controller_1.updateCustomer);
+router.delete("/:id", wifi_controller_1.deleteCustomer);
+router.post("/addPayment/", wifi_controller_1.addPayment);
+router.post("/addInvoice", wifi_controller_1.addInvoice);
+router.get('/getWifiBalance', wifi_controller_1.getBalance);
+router.get('/verifyAndFixBalances', wifi_controller_1.verifyAndFixBalances);
+router.get('/verifyBalances', wifi_controller_1.verifyBalances);
+router.post('/addWifiExpenses', wifi_controller_1.addWifiExpenses);
+exports.default = router;

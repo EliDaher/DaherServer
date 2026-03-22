@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const balance_controller_1 = require("../controllers/balance.controller");
+const router = (0, express_1.Router)();
+router.get("/getTotalDayBalance", balance_controller_1.getTotalDayBalance);
+router.get("/getTotalBalance", balance_controller_1.getTotalBalance);
+router.get("/getEmployeeBalanceTable", balance_controller_1.getEmployeeBalanceTable);
+router.get("/getDailyBalance", balance_controller_1.getDailyBalance);
+router.post("/addMofadale", balance_controller_1.addMofadale);
+exports.default = router;

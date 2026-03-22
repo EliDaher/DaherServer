@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const report_controller_1 = require("../controllers/report.controller");
+const router = (0, express_1.Router)();
+router.get("/monthly-revenue", report_controller_1.getMonthlyRevenue);
+router.get("/aging", report_controller_1.getDebtAgingByBalance);
+router.get("/invoices-status", report_controller_1.getInvoicesWithStatus);
+router.get("/listDuplicateInvoices", report_controller_1.listDuplicateInvoices);
+router.get("/removeDuplicateInvoices", report_controller_1.removeDuplicateInvoices);
+router.get("/listWrongNumberInvoices", report_controller_1.listWrongNumberInvoices);
+router.get("/fixWrongNumberInvoices", report_controller_1.fixWrongNumberInvoices);
+router.get("/InquiryLogs", report_controller_1.getInquiryLogs);
+router.get("/getAllSignatures", report_controller_1.getSignatures);
+router.post("/addSignature", report_controller_1.AddSigSamer);
+exports.default = router;

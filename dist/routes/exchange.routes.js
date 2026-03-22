@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const exchange_controller_1 = require("../controllers/exchange.controller");
+const router = (0, express_1.Router)();
+router.post("/addPending", exchange_controller_1.addPendingExchange);
+router.get("/getPending", exchange_controller_1.getPendingExchange);
+router.delete("/deletePending", exchange_controller_1.deletePendingExchange);
+router.post("/addDone", exchange_controller_1.addDoneExchange);
+router.get("/getDone", exchange_controller_1.getDoneExchange);
+router.delete("/deleteDone", exchange_controller_1.deleteDoneExchange);
+exports.default = router;

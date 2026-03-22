@@ -1,0 +1,26 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_routes_1 = __importDefault(require("./auth.routes"));
+const wifi_routes_1 = __importDefault(require("./wifi.routes"));
+const reports_routes_1 = __importDefault(require("./reports.routes"));
+const balance_routes_1 = __importDefault(require("./balance.routes"));
+const dealer_routes_1 = __importDefault(require("./dealer.routes"));
+const exchange_routes_1 = __importDefault(require("./exchange.routes"));
+const invoice_routes_1 = __importDefault(require("./invoice.routes"));
+const companyBalance_routes_1 = __importDefault(require("./companyBalance.routes"));
+const dashboard_routes_1 = __importDefault(require("./dashboard.routes"));
+const router = (0, express_1.Router)();
+router.use("/auth", auth_routes_1.default);
+router.use("/wifi", wifi_routes_1.default);
+router.use("/reports", reports_routes_1.default);
+router.use("/balance", balance_routes_1.default);
+router.use("/dealer", dealer_routes_1.default);
+router.use("/exchange", exchange_routes_1.default);
+router.use("/invoices", invoice_routes_1.default);
+router.use("/company", companyBalance_routes_1.default);
+router.use("/dashboard", dashboard_routes_1.default);
+exports.default = router;
