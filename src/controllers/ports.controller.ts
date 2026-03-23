@@ -13,6 +13,21 @@ export const addPortOprationInternal = async ({
   return addPortOperation({ executorName, operationType, note });
 };
 
+const OPERATIONS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+let operationsCache:
+  | {
+      key: string;
+      data: {
+        success: boolean;
+        count: number;
+        operations: any[];
+      };
+      lastFetch: number;
+    }
+  | null = null;
+
+
 export const getportsOperations = async (req: Request, res: Response) => {
   try {
     const { fromDate, toDate, executorName } = req.query as {
@@ -21,17 +36,35 @@ export const getportsOperations = async (req: Request, res: Response) => {
       executorName?: string;
     };
 
+    const cacheKey = `${fromDate || ""}|${toDate || ""}|${executorName || ""}`;
+
+    if (
+      operationsCache &&
+      operationsCache.key === cacheKey &&
+      Date.now() - operationsCache.lastFetch < OPERATIONS_CACHE_TTL_MS
+    ) {
+      return res.status(200).json(operationsCache.data);
+    }
+
     const operations = await getportsOperationsService({
       fromDate,
       toDate,
       executorName,
     });
 
-    return res.status(200).json({
+    const responseData = {
       success: true,
       count: operations.length,
       operations,
-    });
+    };
+
+    operationsCache = {
+      key: cacheKey,
+      data: responseData,
+      lastFetch: Date.now(),
+    };
+
+    return res.status(200).json(responseData);
   } catch (error: any) {
     console.error("getportsOperations controller error:", error);
 
