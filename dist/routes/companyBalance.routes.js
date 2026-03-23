@@ -8,4 +8,5 @@ router.get("/", companyBalance_controller_1.getAllCompaniesBalances);
 router.get("/logs", companyBalance_controller_1.getLogsByDate);
 router.post("/increaseBalance", companyBalance_controller_1.increaseBalance);
 router.post("/decreaseBalance", companyBalance_controller_1.decreaseBalance);
+router.post("/fixBalance", companyBalance_controller_1.fixBalance);
 exports.default = router;

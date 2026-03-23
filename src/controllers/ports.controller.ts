@@ -1,86 +1,43 @@
 import { Request, Response } from "express";
-import { runTransaction } from "firebase/database";
-import { emitToUser } from "../sockets/socketHandler";
-const {
-  ref,
-  get,
-  query,
-  orderByChild,
-  equalTo,
-  update,
-  push,
-  set,
-} = require("firebase/database");
-const { database } = require("../../firebaseConfig.js");
+import {
+  AddPortOperationParams,
+  addPortOperation,
+  getportsOperations as getportsOperationsService,
+} from "../services/ports.service";
 
 export const addPortOprationInternal = async ({
   executorName,
   operationType,
   note,
-}: {
-  executorName: string;
-  operationType:
-    | "CustomerInvoice"
-    | "POSInvoice"
-    | "WiFiInvoice"
-    | "CompanyIncrease";
-  note: string;
-}) => {
+}: AddPortOperationParams) => {
+  return addPortOperation({ executorName, operationType, note });
+};
 
+export const getportsOperations = async (req: Request, res: Response) => {
   try {
-    
-    const date = new Date().toISOString().split("T")[0];
-
-    const dbRef = ref(database, "user");
-
-    const searchQuery = query(
-      dbRef,
-      orderByChild("username"),
-      equalTo(executorName)
-    );
-
-    const snapshot = await get(searchQuery);
-
-    if (!snapshot.exists()) {
-      return { error: "User not found" };
-    }
-
-    const userId = Object.keys(snapshot.val())[0];
-    const userOperationsRef = ref(
-      database,
-      `user/${userId}/operationsCount/${operationType}`
-    );
-
-    await runTransaction(userOperationsRef, (currentValue) => {
-      return (currentValue || 0) + 1;
-    });
-
-    const portLogData = {
-      executorName,
-      operationType,
-      note: note || "",
-      timestamp: Date.now(),
-      isoTime: new Date().toISOString(),
+    const { fromDate, toDate, executorName } = req.query as {
+      fromDate?: string;
+      toDate?: string;
+      executorName?: string;
     };
 
-    const operationLogsRef = ref(
-      database,
-      `operationsLogs/${date}`
-    );
+    const operations = await getportsOperationsService({
+      fromDate,
+      toDate,
+      executorName,
+    });
 
-    const newLogRef = await push(operationLogsRef);
-    await set(newLogRef, portLogData);
+    return res.status(200).json({
+      success: true,
+      count: operations.length,
+      operations,
+    });
+  } catch (error: any) {
+    console.error("getportsOperations controller error:", error);
 
-    try {
-      emitToUser("reactUser", "sendPortLog", portLogData);
-    } catch (e) {
-      console.warn("Socket emit failed, continuing...", e);
-    }
-
-
-    return { message: "Operation count updated safely" };
-  } catch (error) {
-    console.error("Firebase Transaction Error:", error);
-    return { error: "Failed to update operation count" };
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch ports operations",
+    });
   }
 };

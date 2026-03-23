@@ -8,6 +8,7 @@ import exchangeRoutes from "./exchange.routes"
 import invoicesRoutes from "./invoice.routes"
 import companiesRoutes from "./companyBalance.routes"
 import dashboardRoutes from "./dashboard.routes"
+import portsRoutes from "./post.routes";
 
 const router = Router();
 
@@ -28,5 +29,7 @@ router.use("/invoices", invoicesRoutes);
 router.use("/company", companiesRoutes);
 
 router.use("/dashboard", dashboardRoutes);
+
+router.use("/ports", portsRoutes);
 
 export default router;

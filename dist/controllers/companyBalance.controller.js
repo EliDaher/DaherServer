@@ -9,14 +9,16 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getLogsByDate = exports.getAllCompaniesBalances = exports.increaseBalance = exports.decreaseBalance = exports.createCompany = void 0;
+exports.fixBalance = exports.getLogsByDate = exports.getAllCompaniesBalances = exports.increaseBalance = exports.decreaseBalance = exports.createCompany = void 0;
 const ports_controller_1 = require("./ports.controller");
+const companies_service_1 = require("../services/companies.service");
+const balance_service_1 = require("../services/balance.service");
 const { ref, get, child, push, set } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 const createCompany = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { name, initialBalance, balanceLimit } = req.body;
-        const companiesRef = ref(database, 'companies');
+        const companiesRef = ref(database, "companies");
         const newCompanyRef = push(companiesRef);
         const newCompanyData = {
             name,
@@ -24,10 +26,12 @@ const createCompany = (req, res) => __awaiter(void 0, void 0, void 0, function* 
             createdAt: new Date().toISOString(),
             lastUpdate: new Date().toISOString(),
             id: newCompanyRef.key,
-            balanceLimit
+            balanceLimit,
         };
         yield set(newCompanyRef, newCompanyData);
-        res.status(201).json({ message: "Company created successfully", success: true });
+        res
+            .status(201)
+            .json({ message: "Company created successfully", success: true });
     }
     catch (error) {
         console.error("Error creating company:", error);
@@ -39,28 +43,11 @@ const decreaseBalance = (req, res) => __awaiter(void 0, void 0, void 0, function
     try {
         const { amount, reason, company, number, companyId, port } = req.body;
         const date = new Date().toISOString().split("T")[0];
-        if (companyId != '') {
-            const companiesRef = ref(database, `companies/${companyId}`);
-            const snapshot = yield get(companiesRef);
-            if (!snapshot.exists()) {
-                return res.status(404).json({ error: "Company not found" });
+        if (companyId != "") {
+            const companyData = yield (0, companies_service_1.updateCompanyBalance)({ companyId, amount });
+            if (companyData.error) {
+                return res.status(404).json(companyData.error);
             }
-            const companyData = snapshot.val();
-            const currentBalance = companyData.balance || 0;
-            const newBalance = currentBalance - amount;
-            yield set(companiesRef, Object.assign(Object.assign({}, companyData), { balance: newBalance, lastUpdate: new Date().toISOString() }));
-            console.log({
-                type: "decrease",
-                amount,
-                reason,
-                company,
-                companyId,
-                number,
-                port,
-                beforeBalance: companyData.balance,
-                afterBalance: newBalance,
-                date: new Date().toISOString(),
-            });
             const balanceLogsRef = ref(database, `balanceLogs/${date}`);
             const newLogRef = push(balanceLogsRef);
             yield set(newLogRef, {
@@ -71,17 +58,19 @@ const decreaseBalance = (req, res) => __awaiter(void 0, void 0, void 0, function
                 companyId,
                 number,
                 port,
-                beforeBalance: companyData.balance,
-                afterBalance: newBalance,
+                beforeBalance: companyData.beforeBalance,
+                afterBalance: companyData.afterBalance,
                 date: new Date().toISOString(),
             });
         }
         (0, ports_controller_1.addPortOprationInternal)({
             executorName: port,
-            operationType: 'POSInvoice',
+            operationType: "POSInvoice",
             note: `فاتورة انترنت للرقم ${number} في شركة ${company} بقيمة ${amount}`,
         });
-        res.status(200).json({ message: "Balance decreased successfully", success: true });
+        res
+            .status(200)
+            .json({ message: "Balance decreased successfully", success: true });
     }
     catch (error) {
         console.error("Error decreasing balance:", error);
@@ -91,31 +80,26 @@ const decreaseBalance = (req, res) => __awaiter(void 0, void 0, void 0, function
 exports.decreaseBalance = decreaseBalance;
 const increaseBalance = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { amount, reason, company, number, companyId, port, paidAmount, paymentNote } = req.body;
+        const { amount, reason, company, number, companyId, port, paidAmount, paymentNote, } = req.body;
         const date = new Date().toISOString().split("T")[0];
-        const companiesRef = ref(database, `companies/${companyId}`);
-        const snapshot = yield get(companiesRef);
-        if (!snapshot.exists()) {
-            return res.status(404).json({ error: "Company not found" });
+        if (!companyId || typeof amount !== "number") {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid companyId or amount",
+            });
         }
-        const companyData = snapshot.val();
-        const currentBalance = companyData.balance || 0;
-        const newBalance = currentBalance + amount;
-        yield set(companiesRef, Object.assign(Object.assign({}, companyData), { balance: newBalance, lastUpdate: new Date().toISOString() }));
-        const balanceLogsRef = ref(database, `balanceLogs/${date}`);
-        const newLogRef = push(balanceLogsRef);
-        yield set(newLogRef, {
+        const companyData = yield (0, companies_service_1.updateCompanyBalance)({ companyId, amount });
+        yield (0, balance_service_1.createBalanceLog)({
             type: "increase",
             amount,
             reason,
             company,
             number,
             port,
-            beforeBalance: companyData.balance,
-            afterBalance: newBalance,
-            date: new Date().toISOString(),
+            beforeBalance: companyData.beforeBalance,
+            afterBalance: companyData.afterBalance,
         });
-        if (paidAmount && paidAmount > 0) {
+        if (paidAmount && Number(paidAmount) > 0) {
             const InvoiceRef = ref(database, `dailyTotal/${date}/mahal`);
             const newInvoiceRef = push(InvoiceRef);
             yield set(newInvoiceRef, {
@@ -131,24 +115,37 @@ const increaseBalance = (req, res) => __awaiter(void 0, void 0, void 0, function
                 timestamp: date,
             });
         }
-        (0, ports_controller_1.addPortOprationInternal)({
-            executorName: port,
-            operationType: "CompanyIncrease",
-            note: `زيادة رصيد في شركة ${company} بقيمة ${amount}`,
+        try {
+            yield (0, ports_controller_1.addPortOprationInternal)({
+                executorName: port,
+                operationType: "CompanyIncrease",
+                note: `زيادة رصيد في شركة ${company} بقيمة ${amount}`,
+            });
+        }
+        catch (internalError) {
+            console.error("addPortOprationInternal error:", internalError);
+        }
+        return res.status(200).json({
+            success: true,
+            message: "Balance increased successfully",
+            data: {
+                beforeBalance: companyData.beforeBalance,
+                afterBalance: companyData.afterBalance,
+            },
         });
-        res
-            .status(200)
-            .json({ message: "Balance increased successfully", success: true });
     }
     catch (error) {
-        console.error("Error increasing balance:", error);
-        res.status(500).json({ error: "Failed to increase balance" });
+        console.error("increaseBalance controller error:", error);
+        return res.status(error.statusCode || 500).json({
+            success: false,
+            message: error.message || "Failed to increase balance",
+        });
     }
 });
 exports.increaseBalance = increaseBalance;
 const getAllCompaniesBalances = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const companiesRef = ref(database, 'companies');
+        const companiesRef = ref(database, "companies");
         const snapshot = yield get(companiesRef);
         if (!snapshot.exists()) {
             return res.status(404).json({ error: "No companies found" });
@@ -196,3 +193,54 @@ const getLogsByDate = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
 });
 exports.getLogsByDate = getLogsByDate;
+const fixBalance = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { amount, reason, company, number, companyId, port } = req.body;
+        if (!companyId || typeof amount !== "number") {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid companyId or amount",
+            });
+        }
+        const companyData = yield (0, companies_service_1.updateCompanyBalance)({
+            companyId,
+            amount,
+        });
+        yield (0, balance_service_1.createBalanceLog)({
+            amount,
+            reason,
+            company,
+            number,
+            port,
+            type: "fix",
+            beforeBalance: companyData.beforeBalance,
+            afterBalance: companyData.afterBalance,
+        });
+        try {
+            yield (0, ports_controller_1.addPortOprationInternal)({
+                executorName: port,
+                operationType: "FixBalance",
+                note: `تصحيح رصيد في شركة ${company} بقيمة ${amount}`,
+            });
+        }
+        catch (internalError) {
+            console.error("addPortOprationInternal error:", internalError);
+        }
+        return res.status(200).json({
+            success: true,
+            message: "تم تصحيح الرصيد بنجاح",
+            data: {
+                beforeBalance: companyData.beforeBalance,
+                afterBalance: companyData.afterBalance,
+            },
+        });
+    }
+    catch (error) {
+        console.error("fixBalance controller error:", error);
+        return res.status(error.statusCode || 500).json({
+            success: false,
+            message: error.message || "فشل في تصحيح الرصيد",
+        });
+    }
+});
+exports.fixBalance = fixBalance;

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createCompany, decreaseBalance, getAllCompaniesBalances, getLogsByDate, increaseBalance } from "../controllers/companyBalance.controller";
+import { createCompany, decreaseBalance, fixBalance, getAllCompaniesBalances, getLogsByDate, increaseBalance } from "../controllers/companyBalance.controller";
 
 const router = Router();
 
@@ -12,5 +12,7 @@ router.get("/logs", getLogsByDate);
 router.post("/increaseBalance", increaseBalance);
 
 router.post("/decreaseBalance", decreaseBalance);
+
+router.post("/fixBalance", fixBalance);
 
 export default router;
