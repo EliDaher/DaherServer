@@ -37,7 +37,7 @@ export const decreaseBalance = async (req: Request, res: Response) => {
     const date = new Date().toISOString().split("T")[0];
 
     if (companyId != "") {
-      const companyData = await updateCompanyBalance({ companyId, amount });
+      const companyData = await updateCompanyBalance({ companyId, amount: Number(-amount) });
 
       if (companyData.error) {
         return res.status(404).json(companyData.error);
