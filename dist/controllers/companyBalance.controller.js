@@ -44,7 +44,7 @@ const decreaseBalance = (req, res) => __awaiter(void 0, void 0, void 0, function
         const { amount, reason, company, number, companyId, port } = req.body;
         const date = new Date().toISOString().split("T")[0];
         if (companyId != "") {
-            const companyData = yield (0, companies_service_1.updateCompanyBalance)({ companyId, amount });
+            const companyData = yield (0, companies_service_1.updateCompanyBalance)({ companyId, amount: Number(-amount) });
             if (companyData.error) {
                 return res.status(404).json(companyData.error);
             }

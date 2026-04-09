@@ -10,6 +10,7 @@ export type AddPortOperationParams = {
     | "CustomerInvoice"
     | "POSInvoice"
     | "WiFiInvoice"
+    | "WiFiPayment"
     | "FixBalance"
     | "CompanyIncrease";
   note: string;

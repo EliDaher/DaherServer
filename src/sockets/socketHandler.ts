@@ -1,10 +1,12 @@
-import { Server, Socket } from "socket.io";
+﻿import { Server, Socket } from "socket.io";
 import { ref, set } from "firebase/database";
-const { database } = require("../../firebaseConfig.js");
 import { v4 as uuid } from "uuid";
+
+const { database } = require("../../firebaseConfig.js");
 
 const clients: Record<string, string> = {};
 const waitingList: Record<string, string> = {};
+const pendingStateRequests: Record<string, string> = {};
 
 let globalIo: Server;
 
@@ -23,9 +25,69 @@ export const emitToUser = (username: string, event: string, data: any) => {
   globalIo.to(socketId).emit(event, data);
 };
 
+function normalizeStatePayload(data: any, forceDisabled?: boolean) {
+  let parsed = data;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      parsed = {};
+    }
+  }
+
+  const payload = Array.isArray(parsed) ? { usernames: parsed } : parsed || {};
+
+  const requestId = payload.requestId || uuid();
+  const usernames = Array.isArray(payload.usernames)
+    ? payload.usernames
+    : Array.isArray(payload.users)
+    ? payload.users
+    : Array.isArray(payload.ppp_users)
+    ? payload.ppp_users
+    : [];
+
+  const desiredDisabledRaw =
+    forceDisabled !== undefined
+      ? forceDisabled
+      : payload.desired_disabled ?? payload.disabled ?? true;
+
+  return {
+    requestId,
+    usernames,
+    desired_disabled: Boolean(desiredDisabledRaw),
+  };
+}
+
+function buildStateError(requestId: string, message: string) {
+  return {
+    ok: false,
+    requestId,
+    message,
+    requested_count: 0,
+    success_count: 0,
+    failed_count: 0,
+    results: [],
+  };
+}
+
+function emitStateResultToRequester(io: Server, eventName: string, data: any) {
+  const requestId = data?.requestId;
+  const targetSocketId = requestId ? pendingStateRequests[requestId] : undefined;
+
+  if (targetSocketId) {
+    io.to(targetSocketId).emit(eventName, data);
+    delete pendingStateRequests[requestId];
+    return;
+  }
+
+  const reactSocketId = clients["reactUser"];
+  if (reactSocketId) {
+    io.to(reactSocketId).emit(eventName, data);
+  }
+}
 
 export function socketHandler(io: Server) {
-  globalIo = io; // 🔥 ربط io العام
+  globalIo = io;
 
   io.on("connection", (socket: Socket) => {
     async function createLog({
@@ -62,8 +124,8 @@ export function socketHandler(io: Server) {
         target,
         message,
         data: data || null,
-        date: date,
-        time: time,
+        date,
+        time,
         timestamp: Date.now(),
       };
 
@@ -71,11 +133,43 @@ export function socketHandler(io: Server) {
       io.emit("createLog", log);
     }
 
-    console.log("📌 Client connected:", socket.id);
+    function forwardStateRequest({
+      input,
+      workerEvent,
+      resultEvent,
+      forceDisabled,
+    }: {
+      input: any;
+      workerEvent: "disablePPPUsers" | "setPPPUsersState";
+      resultEvent: "disablePPPUsersResult" | "setPPPUsersStateResult";
+      forceDisabled?: boolean;
+    }) {
+      const workerSocketId = clients["PPPworker"];
+      const payload = normalizeStatePayload(input, forceDisabled);
+
+      if (!Array.isArray(payload.usernames) || payload.usernames.length === 0) {
+        socket.emit(resultEvent, buildStateError(payload.requestId, "Missing usernames list."));
+        return;
+      }
+
+      if (!workerSocketId) {
+        console.log("Worker client not connected");
+        socket.emit(
+          resultEvent,
+          buildStateError(payload.requestId, "PPP worker is not connected.")
+        );
+        return;
+      }
+
+      pendingStateRequests[payload.requestId] = socket.id;
+      io.to(workerSocketId).emit(workerEvent, payload);
+    }
+
+    console.log("Client connected:", socket.id);
 
     socket.on("register", async (name: string) => {
       clients[name] = socket.id;
-      console.log(`✅ ${name} registered with id: ${socket.id}`);
+      console.log(`${name} registered with id: ${socket.id}`);
 
       try {
         await createLog({
@@ -89,14 +183,14 @@ export function socketHandler(io: Server) {
       }
     });
 
-    socket.on("getActive", (data) => {
+    socket.on("getActive", () => {
       console.log("Received getActive from client:", socket.id);
 
-      const workerSocketId = clients["PPPworker"]; // Python client
+      const workerSocketId = clients["PPPworker"];
       if (workerSocketId) {
-        io.to(workerSocketId).emit("getActive"); // توجيه الحدث للـ Python client
+        io.to(workerSocketId).emit("getActive");
       } else {
-        console.log("⚠️ Worker client not connected");
+        console.log("Worker client not connected");
       }
     });
 
@@ -107,8 +201,47 @@ export function socketHandler(io: Server) {
       if (workerSocketId) {
         io.to(workerSocketId).emit("getInterface", data);
       } else {
-        console.log("⚠️ Worker client not connected");
+        console.log("Worker client not connected");
       }
+    });
+
+    socket.on("sendToDeactivate", (data) => {
+      console.log("Received sendToDeactivate from client:", data);
+      forwardStateRequest({
+        input: data,
+        workerEvent: "disablePPPUsers",
+        resultEvent: "disablePPPUsersResult",
+        forceDisabled: true,
+      });
+    });
+
+    socket.on("disablePPPUsers", (data) => {
+      console.log("Received disablePPPUsers from client:", data);
+      forwardStateRequest({
+        input: data,
+        workerEvent: "disablePPPUsers",
+        resultEvent: "disablePPPUsersResult",
+        forceDisabled: true,
+      });
+    });
+
+    socket.on("setPPPUsersState", (data) => {
+      console.log("Received setPPPUsersState from client:", data);
+      forwardStateRequest({
+        input: data,
+        workerEvent: "setPPPUsersState",
+        resultEvent: "setPPPUsersStateResult",
+      });
+    });
+
+    socket.on("disablePPPUsersResult", (data) => {
+      console.log("Received disablePPPUsersResult from worker:", data);
+      emitStateResultToRequester(io, "disablePPPUsersResult", data);
+    });
+
+    socket.on("setPPPUsersStateResult", (data) => {
+      console.log("Received setPPPUsersStateResult from worker:", data);
+      emitStateResultToRequester(io, "setPPPUsersStateResult", data);
     });
 
     socket.on("returnActivePPP", (data) => {
@@ -120,9 +253,8 @@ export function socketHandler(io: Server) {
       }
     });
 
-
     socket.on("sendPortLog", (data) => {
-      console.log("Received ActivePPP from worker:", data);
+      console.log("Received sendPortLog from worker:", data);
 
       const reactSocketId = clients["reactUser"];
       if (reactSocketId) {
@@ -142,39 +274,30 @@ export function socketHandler(io: Server) {
       } catch (error) {
         console.error("Error creating log from socket event:", error);
       }
-      // {
-      //     "from": email,
-      //     "target": "server",
-      //     "content": f"Received payment request for {sub_number} from {company}",
-      //     "timestamp": int(time.time()),
-      // }
     });
 
     socket.on("json_message", (data) => {
       const target = data.target;
       const sender = data?.content?.email || "unknown";
       if (!target) {
-        console.log("⚠️ No target specified in message:", data);
+        console.log("No target specified in message:", data);
         return;
       }
 
-      if (target == "worker") {
+      if (target === "worker") {
         if (waitingList[sender]) {
-          console.log(
-            `هناك طلب موجود من المستخدم ${sender} الرجاء اعادة المحاولة لاحقاً`
-          );
+          const message = `There is already a pending request for ${sender}. Please try again later.`;
           io.to(clients[sender])?.emit("json_message", {
             content: {
               data: {
-                "حدث حطأ": `هناك طلب موجود من المستخدم ${sender} الرجاء اعادة المحاولة لاحقاً`,
+                error: message,
               },
             },
           });
           delete waitingList[sender];
           return;
-        } else {
-          waitingList[sender] = "waiting";
         }
+        waitingList[sender] = "waiting";
       } else {
         delete waitingList[target];
       }
@@ -182,12 +305,18 @@ export function socketHandler(io: Server) {
       if (clients[target]) {
         io.to(clients[target])?.emit("json_message", data);
       } else {
-        console.log(`⚠️ Client ${target} not connected`);
+        console.log(`Client ${target} not connected`);
       }
     });
 
     socket.on("disconnect", async () => {
-      console.log("❌ Client disconnected:", socket.id);
+      console.log("Client disconnected:", socket.id);
+
+      for (const requestId in pendingStateRequests) {
+        if (pendingStateRequests[requestId] === socket.id) {
+          delete pendingStateRequests[requestId];
+        }
+      }
 
       for (const name in clients) {
         if (clients[name] === socket.id) {
@@ -208,5 +337,3 @@ export function socketHandler(io: Server) {
     });
   });
 }
-
-
