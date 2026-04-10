@@ -246,29 +246,39 @@ const getCompanyDetails = (req, res) => __awaiter(void 0, void 0, void 0, functi
         const { dailyUsage, daysInMonth } = buildMonthDays(month);
         const dayIndex = new Map(dailyUsage.map((item, index) => [item.date, index]));
         const recentUsageLogs = [];
+        const recentIncreaseLogs = [];
         Object.keys(logsByDate).forEach((dateKey) => {
             if (!dateKey.startsWith(`${month}-`))
                 return;
             const dayLogs = logsByDate[dateKey] || {};
             Object.keys(dayLogs).forEach((logId) => {
                 const log = dayLogs[logId];
-                if (!log || log.type !== "decrease")
-                    return;
                 if (String(log.companyId || "") !== companyId)
                     return;
+                const logType = String(log.type || "");
                 const amount = toFiniteNumber(log.amount);
-                const index = dayIndex.get(dateKey);
-                if (index !== undefined) {
-                    dailyUsage[index].amount += amount;
-                    dailyUsage[index].count += 1;
+                if (logType === "decrease") {
+                    const index = dayIndex.get(dateKey);
+                    if (index !== undefined) {
+                        dailyUsage[index].amount += amount;
+                        dailyUsage[index].count += 1;
+                    }
+                    recentUsageLogs.push(Object.assign(Object.assign({ id: logId, dateKey }, log), { amount }));
                 }
-                recentUsageLogs.push(Object.assign(Object.assign({ id: logId, dateKey }, log), { amount }));
+                else if (logType === "increase") {
+                    recentIncreaseLogs.push(Object.assign(Object.assign({ id: logId, dateKey }, log), { amount }));
+                }
             });
         });
         const totalSpentAmount = dailyUsage.reduce((sum, day) => sum + day.amount, 0);
         const operationsCount = dailyUsage.reduce((sum, day) => sum + day.count, 0);
         const averageDailySpent = daysInMonth > 0 ? totalSpentAmount / daysInMonth : 0;
         recentUsageLogs.sort((a, b) => {
+            const aTime = toTimestamp(a.date) || toTimestamp(a.dateKey);
+            const bTime = toTimestamp(b.date) || toTimestamp(b.dateKey);
+            return bTime - aTime;
+        });
+        recentIncreaseLogs.sort((a, b) => {
             const aTime = toTimestamp(a.date) || toTimestamp(a.dateKey);
             const bTime = toTimestamp(b.date) || toTimestamp(b.dateKey);
             return bTime - aTime;
@@ -290,6 +300,7 @@ const getCompanyDetails = (req, res) => __awaiter(void 0, void 0, void 0, functi
             },
             dailyUsage,
             recentUsageLogs: recentUsageLogs.slice(0, 20),
+            recentIncreaseLogs: recentIncreaseLogs.slice(0, 20),
         });
     }
     catch (error) {

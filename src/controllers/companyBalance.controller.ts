@@ -282,6 +282,7 @@ export const getCompanyDetails = async (req: Request, res: Response) => {
     const { dailyUsage, daysInMonth } = buildMonthDays(month);
     const dayIndex = new Map(dailyUsage.map((item, index) => [item.date, index]));
     const recentUsageLogs: any[] = [];
+    const recentIncreaseLogs: any[] = [];
 
     Object.keys(logsByDate).forEach((dateKey) => {
       if (!dateKey.startsWith(`${month}-`)) return;
@@ -289,22 +290,32 @@ export const getCompanyDetails = async (req: Request, res: Response) => {
       const dayLogs = logsByDate[dateKey] || {};
       Object.keys(dayLogs).forEach((logId) => {
         const log = dayLogs[logId];
-        if (!log || log.type !== "decrease") return;
         if (String(log.companyId || "") !== companyId) return;
 
+        const logType = String(log.type || "");
         const amount = toFiniteNumber(log.amount);
-        const index = dayIndex.get(dateKey);
-        if (index !== undefined) {
-          dailyUsage[index].amount += amount;
-          dailyUsage[index].count += 1;
-        }
 
-        recentUsageLogs.push({
-          id: logId,
-          dateKey,
-          ...log,
-          amount,
-        });
+        if (logType === "decrease") {
+          const index = dayIndex.get(dateKey);
+          if (index !== undefined) {
+            dailyUsage[index].amount += amount;
+            dailyUsage[index].count += 1;
+          }
+
+          recentUsageLogs.push({
+            id: logId,
+            dateKey,
+            ...log,
+            amount,
+          });
+        } else if (logType === "increase") {
+          recentIncreaseLogs.push({
+            id: logId,
+            dateKey,
+            ...log,
+            amount,
+          });
+        }
       });
     });
 
@@ -313,6 +324,11 @@ export const getCompanyDetails = async (req: Request, res: Response) => {
     const averageDailySpent = daysInMonth > 0 ? totalSpentAmount / daysInMonth : 0;
 
     recentUsageLogs.sort((a, b) => {
+      const aTime = toTimestamp(a.date) || toTimestamp(a.dateKey);
+      const bTime = toTimestamp(b.date) || toTimestamp(b.dateKey);
+      return bTime - aTime;
+    });
+    recentIncreaseLogs.sort((a, b) => {
       const aTime = toTimestamp(a.date) || toTimestamp(a.dateKey);
       const bTime = toTimestamp(b.date) || toTimestamp(b.dateKey);
       return bTime - aTime;
@@ -335,6 +351,7 @@ export const getCompanyDetails = async (req: Request, res: Response) => {
       },
       dailyUsage,
       recentUsageLogs: recentUsageLogs.slice(0, 20),
+      recentIncreaseLogs: recentIncreaseLogs.slice(0, 20),
     });
   } catch (error) {
     console.error("Error fetching company details:", error);
