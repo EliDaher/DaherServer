@@ -216,6 +216,132 @@ export const getLogsByDate = async (req: Request, res: Response) => {
   }
 };
 
+const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function toFiniteNumber(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function toTimestamp(value: unknown) {
+  if (!value) return 0;
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function buildMonthDays(month: string) {
+  const [yearRaw, monthRaw] = month.split("-");
+  const year = Number(yearRaw);
+  const monthIndex = Number(monthRaw);
+  const daysInMonth = new Date(Date.UTC(year, monthIndex, 0)).getUTCDate();
+
+  const dailyUsage: Array<{ date: string; amount: number; count: number }> = [];
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    dailyUsage.push({
+      date: `${month}-${String(day).padStart(2, "0")}`,
+      amount: 0,
+      count: 0,
+    });
+  }
+
+  return { dailyUsage, daysInMonth };
+}
+
+export const getCompanyDetails = async (req: Request, res: Response) => {
+  try {
+    const { companyId } = req.params;
+    const queryMonth = req.query.month;
+
+    if (!companyId) {
+      return res.status(400).json({ error: "companyId is required" });
+    }
+
+    const month =
+      typeof queryMonth === "string" && queryMonth.trim() !== ""
+        ? queryMonth.trim()
+        : new Date().toISOString().slice(0, 7);
+
+    if (!MONTH_PATTERN.test(month)) {
+      return res
+        .status(400)
+        .json({ error: "Invalid month format. Expected YYYY-MM" });
+    }
+
+    const [companySnap, logsSnap] = await Promise.all([
+      get(ref(database, `companies/${companyId}`)),
+      get(ref(database, "balanceLogs")),
+    ]);
+
+    if (!companySnap.exists()) {
+      return res.status(404).json({ error: "Company not found" });
+    }
+
+    const company = companySnap.val() || {};
+    const logsByDate = logsSnap.exists() ? logsSnap.val() : {};
+
+    const { dailyUsage, daysInMonth } = buildMonthDays(month);
+    const dayIndex = new Map(dailyUsage.map((item, index) => [item.date, index]));
+    const recentUsageLogs: any[] = [];
+
+    Object.keys(logsByDate).forEach((dateKey) => {
+      if (!dateKey.startsWith(`${month}-`)) return;
+
+      const dayLogs = logsByDate[dateKey] || {};
+      Object.keys(dayLogs).forEach((logId) => {
+        const log = dayLogs[logId];
+        if (!log || log.type !== "decrease") return;
+        if (String(log.companyId || "") !== companyId) return;
+
+        const amount = toFiniteNumber(log.amount);
+        const index = dayIndex.get(dateKey);
+        if (index !== undefined) {
+          dailyUsage[index].amount += amount;
+          dailyUsage[index].count += 1;
+        }
+
+        recentUsageLogs.push({
+          id: logId,
+          dateKey,
+          ...log,
+          amount,
+        });
+      });
+    });
+
+    const totalSpentAmount = dailyUsage.reduce((sum, day) => sum + day.amount, 0);
+    const operationsCount = dailyUsage.reduce((sum, day) => sum + day.count, 0);
+    const averageDailySpent = daysInMonth > 0 ? totalSpentAmount / daysInMonth : 0;
+
+    recentUsageLogs.sort((a, b) => {
+      const aTime = toTimestamp(a.date) || toTimestamp(a.dateKey);
+      const bTime = toTimestamp(b.date) || toTimestamp(b.dateKey);
+      return bTime - aTime;
+    });
+
+    return res.status(200).json({
+      company: {
+        id: company.id || companyId,
+        name: company.name || "",
+        balance: toFiniteNumber(company.balance),
+        balanceLimit: toFiniteNumber(company.balanceLimit),
+        createdAt: company.createdAt || null,
+        lastUpdate: company.lastUpdate || null,
+      },
+      month,
+      summary: {
+        totalSpentAmount,
+        operationsCount,
+        averageDailySpent,
+      },
+      dailyUsage,
+      recentUsageLogs: recentUsageLogs.slice(0, 20),
+    });
+  } catch (error) {
+    console.error("Error fetching company details:", error);
+    return res.status(500).json({ error: "Failed to fetch company details" });
+  }
+};
+
 export const fixBalance = async (req: Request, res: Response) => {
   try {
     const { amount, reason, company, number, companyId, port } = req.body;
