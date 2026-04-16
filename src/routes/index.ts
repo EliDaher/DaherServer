@@ -9,6 +9,8 @@ import invoicesRoutes from "./invoice.routes"
 import companiesRoutes from "./companyBalance.routes"
 import dashboardRoutes from "./dashboard.routes"
 import portsRoutes from "./post.routes";
+import posLimitsRoutes from "./posLimits.routes";
+import profitLogsRoutes from "./profitLogs.routes";
 
 const router = Router();
 
@@ -31,5 +33,9 @@ router.use("/company", companiesRoutes);
 router.use("/dashboard", dashboardRoutes);
 
 router.use("/ports", portsRoutes);
+
+router.use("/pos-limits", posLimitsRoutes);
+
+router.use("/profit-logs", profitLogsRoutes);
 
 export default router;
