@@ -86,6 +86,10 @@ const getPosProfitLogs = (req, res) => __awaiter(void 0, void 0, void 0, functio
             const dayLogs = logsByDate[dateKey] || {};
             Object.keys(dayLogs).forEach((logId) => {
                 const raw = dayLogs[logId] || {};
+                const operationState = toOptionalString(raw.operationState);
+                if (operationState !== "تم التسديد") {
+                    return;
+                }
                 const amount = Number(raw.amount || 0);
                 const profitAmount = Number(raw.profitAmount || 0);
                 allFilteredLogs.push({
@@ -99,6 +103,7 @@ const getPosProfitLogs = (req, res) => __awaiter(void 0, void 0, void 0, functio
                     number: toOptionalString(raw.number),
                     operator: toOptionalString(raw.operator),
                     source: "pending_transactions",
+                    operationState: "تم التسديد",
                     createdAt: String(raw.createdAt || `${dateKey}T00:00:00.000Z`),
                     dateKey: String(raw.dateKey || dateKey),
                 });
@@ -132,7 +137,7 @@ const getPosProfitLogs = (req, res) => __awaiter(void 0, void 0, void 0, functio
 });
 exports.getPosProfitLogs = getPosProfitLogs;
 const createPosProfitLog = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     try {
         const invoiceId = toOptionalString((_a = req.body) === null || _a === void 0 ? void 0 : _a.invoiceId);
         const amount = toPositiveNumber((_b = req.body) === null || _b === void 0 ? void 0 : _b.amount);
@@ -155,6 +160,13 @@ const createPosProfitLog = (req, res) => __awaiter(void 0, void 0, void 0, funct
                 message: 'source must be "pending_transactions"',
             });
         }
+        const operationState = toOptionalString((_d = req.body) === null || _d === void 0 ? void 0 : _d.operationState);
+        if (operationState !== "تم التسديد") {
+            return res.status(400).json({
+                success: false,
+                message: 'operationState must be "تم التسديد"',
+            });
+        }
         const createdAt = new Date().toISOString();
         const dateKey = createdAt.split("T")[0];
         const profitAmount = Number((amount * PROFIT_RATE).toFixed(2));
@@ -167,11 +179,12 @@ const createPosProfitLog = (req, res) => __awaiter(void 0, void 0, void 0, funct
             amount,
             profitRate: PROFIT_RATE,
             profitAmount,
-            company: toOptionalString((_d = req.body) === null || _d === void 0 ? void 0 : _d.company),
-            email: toOptionalString((_e = req.body) === null || _e === void 0 ? void 0 : _e.email),
-            number: toOptionalString((_f = req.body) === null || _f === void 0 ? void 0 : _f.number),
-            operator: toOptionalString((_g = req.body) === null || _g === void 0 ? void 0 : _g.operator),
+            company: toOptionalString((_e = req.body) === null || _e === void 0 ? void 0 : _e.company),
+            email: toOptionalString((_f = req.body) === null || _f === void 0 ? void 0 : _f.email),
+            number: toOptionalString((_g = req.body) === null || _g === void 0 ? void 0 : _g.number),
+            operator: toOptionalString((_h = req.body) === null || _h === void 0 ? void 0 : _h.operator),
             source,
+            operationState: "تم التسديد",
             createdAt,
             dateKey,
         };
