@@ -16,7 +16,7 @@ type PosProfitLogRecord = {
   number?: string;
   operator?: string;
   source: "pending_transactions";
-  operationState: "تم التسديد";
+  operationState?: string;
   createdAt: string;
   dateKey: string;
 };
@@ -115,10 +115,6 @@ export const getPosProfitLogs = async (req: Request, res: Response) => {
       const dayLogs = logsByDate[dateKey] || {};
       Object.keys(dayLogs).forEach((logId) => {
         const raw = dayLogs[logId] || {};
-        const operationState = toOptionalString(raw.operationState);
-        if (operationState !== "تم التسديد") {
-          return;
-        }
         const amount = Number(raw.amount || 0);
         const profitAmount = Number(raw.profitAmount || 0);
 
@@ -133,7 +129,7 @@ export const getPosProfitLogs = async (req: Request, res: Response) => {
           number: toOptionalString(raw.number),
           operator: toOptionalString(raw.operator),
           source: "pending_transactions",
-          operationState: "تم التسديد",
+          operationState: toOptionalString(raw.operationState),
           createdAt: String(raw.createdAt || `${dateKey}T00:00:00.000Z`),
           dateKey: String(raw.dateKey || dateKey),
         });
@@ -202,14 +198,6 @@ export const createPosProfitLog = async (req: Request, res: Response) => {
       });
     }
 
-    const operationState = toOptionalString(req.body?.operationState);
-    if (operationState !== "تم التسديد") {
-      return res.status(400).json({
-        success: false,
-        message: 'operationState must be "تم التسديد"',
-      });
-    }
-
     const createdAt = new Date().toISOString();
     const dateKey = createdAt.split("T")[0];
     const profitAmount = Number((amount * PROFIT_RATE).toFixed(2));
@@ -228,7 +216,7 @@ export const createPosProfitLog = async (req: Request, res: Response) => {
       number: toOptionalString(req.body?.number),
       operator: toOptionalString(req.body?.operator),
       source,
-      operationState: "تم التسديد",
+      operationState: toOptionalString(req.body?.operationState),
       createdAt,
       dateKey,
     };
