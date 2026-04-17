@@ -9,141 +9,163 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.parseProductFilters = parseProductFilters;
 exports.listProducts = listProducts;
 exports.getProductById = getProductById;
 exports.createProduct = createProduct;
 exports.updateProduct = updateProduct;
-exports.updateProductStock = updateProductStock;
 exports.updateProductPrices = updateProductPrices;
+exports.updateProductStock = updateProductStock;
+exports.setProductPublishState = setProductPublishState;
 exports.deleteProduct = deleteProduct;
 const database_1 = require("firebase/database");
+const storeValidation_service_1 = require("./storeValidation.service");
 const { database } = require("../../firebaseConfig.js");
-function throwValidation(message) {
-    throw new Error(`VALIDATION:${message}`);
+const PRODUCTS_PATH = "store/products";
+function parseProductType(value, fieldName) {
+    if (value !== "product" && value !== "service") {
+        throw new Error(`VALIDATION:${fieldName} must be "product" or "service"`);
+    }
+    return value;
 }
-function requireString(value, field, options) {
-    if (typeof value !== "string") {
-        throwValidation(`${field} must be a string`);
-    }
-    const trimmed = value.trim();
-    if (!(options === null || options === void 0 ? void 0 : options.allowEmpty) && !trimmed) {
-        throwValidation(`${field} is required`);
-    }
-    return trimmed;
-}
-function requireNumber(value, field) {
-    const num = Number(value);
-    if (!Number.isFinite(num)) {
-        throwValidation(`${field} must be a valid number`);
-    }
-    if (num < 0) {
-        throwValidation(`${field} must be greater than or equal to 0`);
-    }
-    return num;
-}
-function normalizeProductInput(input) {
-    const name = requireString(input.name, "name");
-    const category = requireString(input.category, "category");
-    const description = requireString(input.description, "description", {
-        allowEmpty: true,
-    });
-    const imageUrl = requireString(input.imageUrl, "imageUrl", {
-        allowEmpty: true,
-    });
-    const stock = requireNumber(input.stock, "stock");
-    const priceSell = requireNumber(input.priceSell, "priceSell");
-    const priceCost = requireNumber(input.priceCost, "priceCost");
-    const priceWholesale = requireNumber(input.priceWholesale, "priceWholesale");
+function normalizeProduct(raw) {
     return {
-        name,
-        category,
-        description,
-        imageUrl,
-        stock,
-        priceSell,
-        priceCost,
-        priceWholesale,
+        id: (0, storeValidation_service_1.asOptionalString)(raw === null || raw === void 0 ? void 0 : raw.id),
+        name: (0, storeValidation_service_1.asLocalizedOptional)(raw === null || raw === void 0 ? void 0 : raw.name, "name"),
+        description: (0, storeValidation_service_1.asLocalizedOptional)(raw === null || raw === void 0 ? void 0 : raw.description, "description"),
+        type: (raw === null || raw === void 0 ? void 0 : raw.type) === "service" ? "service" : "product",
+        imageUrl: (0, storeValidation_service_1.asOptionalString)(raw === null || raw === void 0 ? void 0 : raw.imageUrl),
+        priceSell: Number((raw === null || raw === void 0 ? void 0 : raw.priceSell) || 0),
+        priceCost: Number((raw === null || raw === void 0 ? void 0 : raw.priceCost) || 0),
+        priceWholesale: Number((raw === null || raw === void 0 ? void 0 : raw.priceWholesale) || 0),
+        stock: Number((raw === null || raw === void 0 ? void 0 : raw.stock) || 0),
+        categoryId: (0, storeValidation_service_1.asOptionalString)(raw === null || raw === void 0 ? void 0 : raw.categoryId),
+        brandId: (0, storeValidation_service_1.asOptionalString)(raw === null || raw === void 0 ? void 0 : raw.brandId),
+        isPublished: Boolean(raw === null || raw === void 0 ? void 0 : raw.isPublished),
+        isFeatured: Boolean(raw === null || raw === void 0 ? void 0 : raw.isFeatured),
+        createdAt: (0, storeValidation_service_1.asOptionalString)(raw === null || raw === void 0 ? void 0 : raw.createdAt),
+        updatedAt: (0, storeValidation_service_1.asOptionalString)(raw === null || raw === void 0 ? void 0 : raw.updatedAt),
     };
 }
-function normalizeProductUpdateInput(input) {
+function parseCreateInput(input) {
+    var _a, _b, _c;
+    return {
+        name: (0, storeValidation_service_1.asLocalizedRequired)(input.name, "name"),
+        description: (0, storeValidation_service_1.asLocalizedRequired)(input.description, "description"),
+        type: parseProductType(input.type, "type"),
+        imageUrl: (0, storeValidation_service_1.asRequiredString)((_a = input.imageUrl) !== null && _a !== void 0 ? _a : "", "imageUrl", {
+            allowEmpty: true,
+        }),
+        priceSell: (0, storeValidation_service_1.asNonNegativeNumber)(input.priceSell, "priceSell"),
+        priceCost: (0, storeValidation_service_1.asNonNegativeNumber)(input.priceCost, "priceCost"),
+        priceWholesale: (0, storeValidation_service_1.asNonNegativeNumber)(input.priceWholesale, "priceWholesale"),
+        stock: (0, storeValidation_service_1.asNonNegativeNumber)(input.stock, "stock"),
+        categoryId: (0, storeValidation_service_1.asRequiredString)((_b = input.categoryId) !== null && _b !== void 0 ? _b : "", "categoryId", {
+            allowEmpty: true,
+        }),
+        brandId: (0, storeValidation_service_1.asRequiredString)((_c = input.brandId) !== null && _c !== void 0 ? _c : "", "brandId", { allowEmpty: true }),
+        isPublished: (0, storeValidation_service_1.asBoolean)(input.isPublished, "isPublished"),
+        isFeatured: (0, storeValidation_service_1.asBoolean)(input.isFeatured, "isFeatured"),
+    };
+}
+function parseUpdateInput(input) {
     const payload = {};
     if (input.name !== undefined) {
-        payload.name = requireString(input.name, "name");
-    }
-    if (input.category !== undefined) {
-        payload.category = requireString(input.category, "category");
+        payload.name = (0, storeValidation_service_1.asLocalizedRequired)(input.name, "name");
     }
     if (input.description !== undefined) {
-        payload.description = requireString(input.description, "description", {
-            allowEmpty: true,
-        });
+        payload.description = (0, storeValidation_service_1.asLocalizedRequired)(input.description, "description");
+    }
+    if (input.type !== undefined) {
+        payload.type = parseProductType(input.type, "type");
     }
     if (input.imageUrl !== undefined) {
-        payload.imageUrl = requireString(input.imageUrl, "imageUrl", {
+        payload.imageUrl = (0, storeValidation_service_1.asRequiredString)(input.imageUrl, "imageUrl", {
             allowEmpty: true,
         });
     }
-    if (input.stock !== undefined) {
-        payload.stock = requireNumber(input.stock, "stock");
-    }
     if (input.priceSell !== undefined) {
-        payload.priceSell = requireNumber(input.priceSell, "priceSell");
+        payload.priceSell = (0, storeValidation_service_1.asNonNegativeNumber)(input.priceSell, "priceSell");
     }
     if (input.priceCost !== undefined) {
-        payload.priceCost = requireNumber(input.priceCost, "priceCost");
+        payload.priceCost = (0, storeValidation_service_1.asNonNegativeNumber)(input.priceCost, "priceCost");
     }
     if (input.priceWholesale !== undefined) {
-        payload.priceWholesale = requireNumber(input.priceWholesale, "priceWholesale");
+        payload.priceWholesale = (0, storeValidation_service_1.asNonNegativeNumber)(input.priceWholesale, "priceWholesale");
+    }
+    if (input.stock !== undefined) {
+        payload.stock = (0, storeValidation_service_1.asNonNegativeNumber)(input.stock, "stock");
+    }
+    if (input.categoryId !== undefined) {
+        payload.categoryId = (0, storeValidation_service_1.asRequiredString)(input.categoryId, "categoryId", {
+            allowEmpty: true,
+        });
+    }
+    if (input.brandId !== undefined) {
+        payload.brandId = (0, storeValidation_service_1.asRequiredString)(input.brandId, "brandId", {
+            allowEmpty: true,
+        });
+    }
+    if (input.isPublished !== undefined) {
+        payload.isPublished = (0, storeValidation_service_1.asBoolean)(input.isPublished, "isPublished");
+    }
+    if (input.isFeatured !== undefined) {
+        payload.isFeatured = (0, storeValidation_service_1.asBoolean)(input.isFeatured, "isFeatured");
     }
     if (Object.keys(payload).length === 0) {
-        throwValidation("No valid fields were provided");
+        throw new Error("VALIDATION:No valid fields were provided");
     }
     return payload;
 }
-function normalizeProduct(product) {
-    return {
-        id: String(product.id || ""),
-        name: String(product.name || ""),
-        category: String(product.category || ""),
-        description: String(product.description || ""),
-        imageUrl: String(product.imageUrl || ""),
-        stock: Number(product.stock || 0),
-        priceSell: Number(product.priceSell || 0),
-        priceCost: Number(product.priceCost || 0),
-        priceWholesale: Number(product.priceWholesale || 0),
-        createdAt: String(product.createdAt || ""),
-        updatedAt: String(product.updatedAt || ""),
-    };
-}
-function getProductRecordById(id) {
+function getById(id) {
     return __awaiter(this, void 0, void 0, function* () {
-        const productRef = (0, database_1.ref)(database, `products/${id}`);
-        const snapshot = yield (0, database_1.get)(productRef);
+        const itemRef = (0, database_1.ref)(database, `${PRODUCTS_PATH}/${id}`);
+        const snapshot = yield (0, database_1.get)(itemRef);
         if (!snapshot.exists()) {
             return null;
         }
         return normalizeProduct(snapshot.val());
     });
 }
+function parseProductFilters(query) {
+    const typeRaw = query.type;
+    const parsedType = typeRaw === undefined ? undefined : parseProductType(typeRaw, "type");
+    return {
+        search: typeof query.search === "string" ? query.search : undefined,
+        type: parsedType,
+        categoryId: typeof query.categoryId === "string" ? query.categoryId : undefined,
+        brandId: typeof query.brandId === "string" ? query.brandId : undefined,
+        isPublished: (0, storeValidation_service_1.toBooleanQuery)(query.isPublished, "isPublished"),
+        inStock: (0, storeValidation_service_1.toBooleanQuery)(query.inStock, "inStock"),
+    };
+}
 function listProducts() {
     return __awaiter(this, arguments, void 0, function* (filters = {}) {
-        const productsRef = (0, database_1.ref)(database, "products");
-        const snapshot = yield (0, database_1.get)(productsRef);
+        const rootRef = (0, database_1.ref)(database, PRODUCTS_PATH);
+        const snapshot = yield (0, database_1.get)(rootRef);
         if (!snapshot.exists()) {
             return [];
         }
         const data = snapshot.val() || {};
-        let products = Object.keys(data).map((key) => normalizeProduct(Object.assign({ id: key }, data[key])));
+        let products = Object.keys(data).map((id) => normalizeProduct(Object.assign({ id }, data[id])));
         if (filters.search) {
-            const query = filters.search.trim().toLowerCase();
+            const term = filters.search.trim().toLowerCase();
             products = products.filter((item) => {
-                const haystack = `${item.name} ${item.category} ${item.description}`.toLowerCase();
-                return haystack.includes(query);
+                const text = `${item.name.ar} ${item.name.en} ${item.description.ar} ${item.description.en}`.toLowerCase();
+                return text.includes(term);
             });
         }
-        if (filters.category) {
-            const category = filters.category.trim().toLowerCase();
-            products = products.filter((item) => item.category.trim().toLowerCase() === category);
+        if (filters.type) {
+            products = products.filter((item) => item.type === filters.type);
+        }
+        if (filters.categoryId) {
+            products = products.filter((item) => item.categoryId === filters.categoryId);
+        }
+        if (filters.brandId) {
+            products = products.filter((item) => item.brandId === filters.brandId);
+        }
+        if (filters.isPublished !== undefined) {
+            products = products.filter((item) => item.isPublished === filters.isPublished);
         }
         if (filters.inStock === true) {
             products = products.filter((item) => item.stock > 0);
@@ -161,96 +183,109 @@ function listProducts() {
 }
 function getProductById(id) {
     return __awaiter(this, void 0, void 0, function* () {
-        return getProductRecordById(id);
+        return getById(id);
     });
 }
 function createProduct(input) {
     return __awaiter(this, void 0, void 0, function* () {
-        const normalized = normalizeProductInput(input);
-        const now = new Date().toISOString();
-        const productsRef = (0, database_1.ref)(database, "products");
-        const newProductRef = (0, database_1.push)(productsRef);
-        const id = String(newProductRef.key || "");
-        const payload = Object.assign(Object.assign({ id }, normalized), { createdAt: now, updatedAt: now });
-        yield (0, database_1.set)(newProductRef, payload);
+        const parsed = parseCreateInput(input);
+        const now = (0, storeValidation_service_1.toIsoNow)();
+        const listRef = (0, database_1.ref)(database, PRODUCTS_PATH);
+        const newRef = (0, database_1.push)(listRef);
+        const id = String(newRef.key || "");
+        const payload = Object.assign(Object.assign({ id }, parsed), { createdAt: now, updatedAt: now });
+        yield (0, database_1.set)(newRef, payload);
         return payload;
     });
 }
 function updateProduct(id, input) {
     return __awaiter(this, void 0, void 0, function* () {
-        const existing = yield getProductRecordById(id);
+        const existing = yield getById(id);
         if (!existing) {
             return null;
         }
-        const updatedFields = normalizeProductUpdateInput(input);
-        const updatedAt = new Date().toISOString();
-        const productRef = (0, database_1.ref)(database, `products/${id}`);
-        yield (0, database_1.update)(productRef, Object.assign(Object.assign({}, updatedFields), { updatedAt }));
-        return Object.assign(Object.assign(Object.assign({}, existing), updatedFields), { updatedAt });
+        const updatedFields = parseUpdateInput(input);
+        const payload = Object.assign(Object.assign({}, updatedFields), { updatedAt: (0, storeValidation_service_1.toIsoNow)() });
+        const itemRef = (0, database_1.ref)(database, `${PRODUCTS_PATH}/${id}`);
+        yield (0, database_1.update)(itemRef, payload);
+        return Object.assign(Object.assign({}, existing), payload);
+    });
+}
+function updateProductPrices(id, input) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const existing = yield getById(id);
+        if (!existing) {
+            return null;
+        }
+        const payload = {};
+        if (input.priceSell !== undefined) {
+            payload.priceSell = (0, storeValidation_service_1.asNonNegativeNumber)(input.priceSell, "priceSell");
+        }
+        if (input.priceCost !== undefined) {
+            payload.priceCost = (0, storeValidation_service_1.asNonNegativeNumber)(input.priceCost, "priceCost");
+        }
+        if (input.priceWholesale !== undefined) {
+            payload.priceWholesale = (0, storeValidation_service_1.asNonNegativeNumber)(input.priceWholesale, "priceWholesale");
+        }
+        if (Object.keys(payload).length === 0) {
+            throw new Error("VALIDATION:At least one price field is required");
+        }
+        payload.updatedAt = (0, storeValidation_service_1.toIsoNow)();
+        const itemRef = (0, database_1.ref)(database, `${PRODUCTS_PATH}/${id}`);
+        yield (0, database_1.update)(itemRef, payload);
+        return Object.assign(Object.assign({}, existing), payload);
     });
 }
 function updateProductStock(id, input) {
     return __awaiter(this, void 0, void 0, function* () {
-        const existing = yield getProductRecordById(id);
+        const existing = yield getById(id);
         if (!existing) {
             return null;
         }
         const hasStock = input.stock !== undefined;
         const hasDelta = input.delta !== undefined;
         if (!hasStock && !hasDelta) {
-            throwValidation("Either stock or delta must be provided");
+            throw new Error("VALIDATION:Either stock or delta must be provided");
         }
         if (hasStock && hasDelta) {
-            throwValidation("Provide either stock or delta, not both");
+            throw new Error("VALIDATION:Provide either stock or delta, not both");
         }
         const nextStock = hasStock
-            ? requireNumber(input.stock, "stock")
-            : Number(existing.stock) + Number(input.delta);
+            ? (0, storeValidation_service_1.asNonNegativeNumber)(input.stock, "stock")
+            : existing.stock + Number(input.delta);
         if (!Number.isFinite(nextStock) || nextStock < 0) {
-            throwValidation("Resulting stock must be greater than or equal to 0");
+            throw new Error("VALIDATION:Resulting stock must be greater than or equal to 0");
         }
-        const updatedAt = new Date().toISOString();
-        const productRef = (0, database_1.ref)(database, `products/${id}`);
-        yield (0, database_1.update)(productRef, {
+        const payload = {
             stock: nextStock,
-            updatedAt,
-        });
-        return Object.assign(Object.assign({}, existing), { stock: nextStock, updatedAt });
+            updatedAt: (0, storeValidation_service_1.toIsoNow)(),
+        };
+        const itemRef = (0, database_1.ref)(database, `${PRODUCTS_PATH}/${id}`);
+        yield (0, database_1.update)(itemRef, payload);
+        return Object.assign(Object.assign({}, existing), payload);
     });
 }
-function updateProductPrices(id, input) {
+function setProductPublishState(id, isPublished) {
     return __awaiter(this, void 0, void 0, function* () {
-        const existing = yield getProductRecordById(id);
+        const existing = yield getById(id);
         if (!existing) {
             return null;
         }
-        const payload = {};
-        if (input.priceSell !== undefined) {
-            payload.priceSell = requireNumber(input.priceSell, "priceSell");
-        }
-        if (input.priceCost !== undefined) {
-            payload.priceCost = requireNumber(input.priceCost, "priceCost");
-        }
-        if (input.priceWholesale !== undefined) {
-            payload.priceWholesale = requireNumber(input.priceWholesale, "priceWholesale");
-        }
-        if (Object.keys(payload).length === 0) {
-            throwValidation("At least one price field is required");
-        }
-        const updatedAt = new Date().toISOString();
-        const productRef = (0, database_1.ref)(database, `products/${id}`);
-        yield (0, database_1.update)(productRef, Object.assign(Object.assign({}, payload), { updatedAt }));
-        return Object.assign(Object.assign(Object.assign({}, existing), payload), { updatedAt });
+        const parsed = (0, storeValidation_service_1.asBoolean)(isPublished, "isPublished");
+        const payload = { isPublished: parsed, updatedAt: (0, storeValidation_service_1.toIsoNow)() };
+        const itemRef = (0, database_1.ref)(database, `${PRODUCTS_PATH}/${id}`);
+        yield (0, database_1.update)(itemRef, payload);
+        return Object.assign(Object.assign({}, existing), payload);
     });
 }
 function deleteProduct(id) {
     return __awaiter(this, void 0, void 0, function* () {
-        const existing = yield getProductRecordById(id);
+        const existing = yield getById(id);
         if (!existing) {
             return false;
         }
-        const productRef = (0, database_1.ref)(database, `products/${id}`);
-        yield (0, database_1.remove)(productRef);
+        const itemRef = (0, database_1.ref)(database, `${PRODUCTS_PATH}/${id}`);
+        yield (0, database_1.remove)(itemRef);
         return true;
     });
 }

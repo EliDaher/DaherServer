@@ -1,202 +1,235 @@
 import { get, push, ref, remove, set, update } from "firebase/database";
+import {
+  asBoolean,
+  asLocalizedOptional,
+  asLocalizedRequired,
+  asNonNegativeNumber,
+  asOptionalString,
+  asRequiredString,
+  toBooleanQuery,
+  toIsoNow,
+  type LocalizedText,
+} from "./storeValidation.service";
 const { database } = require("../../firebaseConfig.js");
 
-type ProductRecord = {
+const PRODUCTS_PATH = "store/products";
+
+export type ProductType = "product" | "service";
+
+export type ProductRecord = {
   id: string;
-  name: string;
-  category: string;
-  description: string;
+  name: LocalizedText;
+  description: LocalizedText;
+  type: ProductType;
   imageUrl: string;
-  stock: number;
   priceSell: number;
   priceCost: number;
   priceWholesale: number;
+  stock: number;
+  categoryId: string;
+  brandId: string;
+  isPublished: boolean;
+  isFeatured: boolean;
   createdAt: string;
   updatedAt: string;
 };
 
 export type ProductFilters = {
   search?: string;
-  category?: string;
+  type?: ProductType;
+  categoryId?: string;
+  brandId?: string;
+  isPublished?: boolean;
   inStock?: boolean;
 };
 
-type ProductInput = {
-  name?: unknown;
-  category?: unknown;
-  description?: unknown;
-  imageUrl?: unknown;
-  stock?: unknown;
-  priceSell?: unknown;
-  priceCost?: unknown;
-  priceWholesale?: unknown;
-};
+type ProductInput = Partial<{
+  name: unknown;
+  description: unknown;
+  type: unknown;
+  imageUrl: unknown;
+  priceSell: unknown;
+  priceCost: unknown;
+  priceWholesale: unknown;
+  stock: unknown;
+  categoryId: unknown;
+  brandId: unknown;
+  isPublished: unknown;
+  isFeatured: unknown;
+}>;
 
-type ProductUpdateInput = Partial<ProductInput>;
+type PricesInput = Partial<{
+  priceSell: unknown;
+  priceCost: unknown;
+  priceWholesale: unknown;
+}>;
 
-type StockUpdateInput = {
-  stock?: unknown;
-  delta?: unknown;
-};
+type StockInput = Partial<{
+  stock: unknown;
+  delta: unknown;
+}>;
 
-type PricesUpdateInput = {
-  priceSell?: unknown;
-  priceCost?: unknown;
-  priceWholesale?: unknown;
-};
+function parseProductType(value: unknown, fieldName: string): ProductType {
+  if (value !== "product" && value !== "service") {
+    throw new Error(`VALIDATION:${fieldName} must be "product" or "service"`);
+  }
 
-function throwValidation(message: string): never {
-  throw new Error(`VALIDATION:${message}`);
+  return value;
 }
 
-function requireString(
-  value: unknown,
-  field: string,
-  options?: { allowEmpty?: boolean },
-) {
-  if (typeof value !== "string") {
-    throwValidation(`${field} must be a string`);
-  }
-
-  const trimmed = value.trim();
-  if (!options?.allowEmpty && !trimmed) {
-    throwValidation(`${field} is required`);
-  }
-
-  return trimmed;
-}
-
-function requireNumber(value: unknown, field: string) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) {
-    throwValidation(`${field} must be a valid number`);
-  }
-  if (num < 0) {
-    throwValidation(`${field} must be greater than or equal to 0`);
-  }
-  return num;
-}
-
-function normalizeProductInput(input: ProductInput): Omit<
-  ProductRecord,
-  "id" | "createdAt" | "updatedAt"
-> {
-  const name = requireString(input.name, "name");
-  const category = requireString(input.category, "category");
-  const description = requireString(input.description, "description", {
-    allowEmpty: true,
-  });
-  const imageUrl = requireString(input.imageUrl, "imageUrl", {
-    allowEmpty: true,
-  });
-
-  const stock = requireNumber(input.stock, "stock");
-  const priceSell = requireNumber(input.priceSell, "priceSell");
-  const priceCost = requireNumber(input.priceCost, "priceCost");
-  const priceWholesale = requireNumber(input.priceWholesale, "priceWholesale");
-
+function normalizeProduct(raw: any): ProductRecord {
   return {
-    name,
-    category,
-    description,
-    imageUrl,
-    stock,
-    priceSell,
-    priceCost,
-    priceWholesale,
+    id: asOptionalString(raw?.id),
+    name: asLocalizedOptional(raw?.name, "name"),
+    description: asLocalizedOptional(raw?.description, "description"),
+    type: raw?.type === "service" ? "service" : "product",
+    imageUrl: asOptionalString(raw?.imageUrl),
+    priceSell: Number(raw?.priceSell || 0),
+    priceCost: Number(raw?.priceCost || 0),
+    priceWholesale: Number(raw?.priceWholesale || 0),
+    stock: Number(raw?.stock || 0),
+    categoryId: asOptionalString(raw?.categoryId),
+    brandId: asOptionalString(raw?.brandId),
+    isPublished: Boolean(raw?.isPublished),
+    isFeatured: Boolean(raw?.isFeatured),
+    createdAt: asOptionalString(raw?.createdAt),
+    updatedAt: asOptionalString(raw?.updatedAt),
   };
 }
 
-function normalizeProductUpdateInput(input: ProductUpdateInput) {
+function parseCreateInput(input: ProductInput) {
+  return {
+    name: asLocalizedRequired(input.name, "name"),
+    description: asLocalizedRequired(input.description, "description"),
+    type: parseProductType(input.type, "type"),
+    imageUrl: asRequiredString(input.imageUrl ?? "", "imageUrl", {
+      allowEmpty: true,
+    }),
+    priceSell: asNonNegativeNumber(input.priceSell, "priceSell"),
+    priceCost: asNonNegativeNumber(input.priceCost, "priceCost"),
+    priceWholesale: asNonNegativeNumber(input.priceWholesale, "priceWholesale"),
+    stock: asNonNegativeNumber(input.stock, "stock"),
+    categoryId: asRequiredString(input.categoryId ?? "", "categoryId", {
+      allowEmpty: true,
+    }),
+    brandId: asRequiredString(input.brandId ?? "", "brandId", { allowEmpty: true }),
+    isPublished: asBoolean(input.isPublished, "isPublished"),
+    isFeatured: asBoolean(input.isFeatured, "isFeatured"),
+  };
+}
+
+function parseUpdateInput(input: ProductInput) {
   const payload: Partial<Omit<ProductRecord, "id" | "createdAt" | "updatedAt">> = {};
 
   if (input.name !== undefined) {
-    payload.name = requireString(input.name, "name");
-  }
-  if (input.category !== undefined) {
-    payload.category = requireString(input.category, "category");
+    payload.name = asLocalizedRequired(input.name, "name");
   }
   if (input.description !== undefined) {
-    payload.description = requireString(input.description, "description", {
-      allowEmpty: true,
-    });
+    payload.description = asLocalizedRequired(input.description, "description");
+  }
+  if (input.type !== undefined) {
+    payload.type = parseProductType(input.type, "type");
   }
   if (input.imageUrl !== undefined) {
-    payload.imageUrl = requireString(input.imageUrl, "imageUrl", {
+    payload.imageUrl = asRequiredString(input.imageUrl, "imageUrl", {
       allowEmpty: true,
     });
   }
-  if (input.stock !== undefined) {
-    payload.stock = requireNumber(input.stock, "stock");
-  }
   if (input.priceSell !== undefined) {
-    payload.priceSell = requireNumber(input.priceSell, "priceSell");
+    payload.priceSell = asNonNegativeNumber(input.priceSell, "priceSell");
   }
   if (input.priceCost !== undefined) {
-    payload.priceCost = requireNumber(input.priceCost, "priceCost");
+    payload.priceCost = asNonNegativeNumber(input.priceCost, "priceCost");
   }
   if (input.priceWholesale !== undefined) {
-    payload.priceWholesale = requireNumber(input.priceWholesale, "priceWholesale");
+    payload.priceWholesale = asNonNegativeNumber(input.priceWholesale, "priceWholesale");
+  }
+  if (input.stock !== undefined) {
+    payload.stock = asNonNegativeNumber(input.stock, "stock");
+  }
+  if (input.categoryId !== undefined) {
+    payload.categoryId = asRequiredString(input.categoryId, "categoryId", {
+      allowEmpty: true,
+    });
+  }
+  if (input.brandId !== undefined) {
+    payload.brandId = asRequiredString(input.brandId, "brandId", {
+      allowEmpty: true,
+    });
+  }
+  if (input.isPublished !== undefined) {
+    payload.isPublished = asBoolean(input.isPublished, "isPublished");
+  }
+  if (input.isFeatured !== undefined) {
+    payload.isFeatured = asBoolean(input.isFeatured, "isFeatured");
   }
 
   if (Object.keys(payload).length === 0) {
-    throwValidation("No valid fields were provided");
+    throw new Error("VALIDATION:No valid fields were provided");
   }
 
   return payload;
 }
 
-function normalizeProduct(product: any): ProductRecord {
-  return {
-    id: String(product.id || ""),
-    name: String(product.name || ""),
-    category: String(product.category || ""),
-    description: String(product.description || ""),
-    imageUrl: String(product.imageUrl || ""),
-    stock: Number(product.stock || 0),
-    priceSell: Number(product.priceSell || 0),
-    priceCost: Number(product.priceCost || 0),
-    priceWholesale: Number(product.priceWholesale || 0),
-    createdAt: String(product.createdAt || ""),
-    updatedAt: String(product.updatedAt || ""),
-  };
-}
-
-async function getProductRecordById(id: string) {
-  const productRef = ref(database, `products/${id}`);
-  const snapshot = await get(productRef);
+async function getById(id: string) {
+  const itemRef = ref(database, `${PRODUCTS_PATH}/${id}`);
+  const snapshot = await get(itemRef);
   if (!snapshot.exists()) {
     return null;
   }
   return normalizeProduct(snapshot.val());
 }
 
+export function parseProductFilters(query: Record<string, unknown>): ProductFilters {
+  const typeRaw = query.type;
+  const parsedType =
+    typeRaw === undefined ? undefined : parseProductType(typeRaw, "type");
+
+  return {
+    search: typeof query.search === "string" ? query.search : undefined,
+    type: parsedType,
+    categoryId: typeof query.categoryId === "string" ? query.categoryId : undefined,
+    brandId: typeof query.brandId === "string" ? query.brandId : undefined,
+    isPublished: toBooleanQuery(query.isPublished, "isPublished"),
+    inStock: toBooleanQuery(query.inStock, "inStock"),
+  };
+}
+
 export async function listProducts(filters: ProductFilters = {}) {
-  const productsRef = ref(database, "products");
-  const snapshot = await get(productsRef);
+  const rootRef = ref(database, PRODUCTS_PATH);
+  const snapshot = await get(rootRef);
 
   if (!snapshot.exists()) {
     return [];
   }
 
   const data = snapshot.val() || {};
-  let products = Object.keys(data).map((key) =>
-    normalizeProduct({ id: key, ...data[key] }),
+  let products = Object.keys(data).map((id) =>
+    normalizeProduct({ id, ...data[id] }),
   );
 
   if (filters.search) {
-    const query = filters.search.trim().toLowerCase();
+    const term = filters.search.trim().toLowerCase();
     products = products.filter((item) => {
-      const haystack = `${item.name} ${item.category} ${item.description}`.toLowerCase();
-      return haystack.includes(query);
+      const text = `${item.name.ar} ${item.name.en} ${item.description.ar} ${item.description.en}`.toLowerCase();
+      return text.includes(term);
     });
   }
 
-  if (filters.category) {
-    const category = filters.category.trim().toLowerCase();
-    products = products.filter(
-      (item) => item.category.trim().toLowerCase() === category,
-    );
+  if (filters.type) {
+    products = products.filter((item) => item.type === filters.type);
+  }
+
+  if (filters.categoryId) {
+    products = products.filter((item) => item.categoryId === filters.categoryId);
+  }
+
+  if (filters.brandId) {
+    products = products.filter((item) => item.brandId === filters.brandId);
+  }
+
+  if (filters.isPublished !== undefined) {
+    products = products.filter((item) => item.isPublished === filters.isPublished);
   }
 
   if (filters.inStock === true) {
@@ -217,53 +250,81 @@ export async function listProducts(filters: ProductFilters = {}) {
 }
 
 export async function getProductById(id: string) {
-  return getProductRecordById(id);
+  return getById(id);
 }
 
 export async function createProduct(input: ProductInput) {
-  const normalized = normalizeProductInput(input);
-  const now = new Date().toISOString();
-
-  const productsRef = ref(database, "products");
-  const newProductRef = push(productsRef);
-  const id = String(newProductRef.key || "");
+  const parsed = parseCreateInput(input);
+  const now = toIsoNow();
+  const listRef = ref(database, PRODUCTS_PATH);
+  const newRef = push(listRef);
+  const id = String(newRef.key || "");
 
   const payload: ProductRecord = {
     id,
-    ...normalized,
+    ...parsed,
     createdAt: now,
     updatedAt: now,
   };
 
-  await set(newProductRef, payload);
-
+  await set(newRef, payload);
   return payload;
 }
 
-export async function updateProduct(id: string, input: ProductUpdateInput) {
-  const existing = await getProductRecordById(id);
+export async function updateProduct(id: string, input: ProductInput) {
+  const existing = await getById(id);
   if (!existing) {
     return null;
   }
 
-  const updatedFields = normalizeProductUpdateInput(input);
-  const updatedAt = new Date().toISOString();
-  const productRef = ref(database, `products/${id}`);
-
-  await update(productRef, {
+  const updatedFields = parseUpdateInput(input);
+  const payload = {
     ...updatedFields,
-    updatedAt,
-  });
+    updatedAt: toIsoNow(),
+  };
+
+  const itemRef = ref(database, `${PRODUCTS_PATH}/${id}`);
+  await update(itemRef, payload);
 
   return {
     ...existing,
-    ...updatedFields,
-    updatedAt,
+    ...payload,
   };
 }
 
-export async function updateProductStock(id: string, input: StockUpdateInput) {
-  const existing = await getProductRecordById(id);
+export async function updateProductPrices(id: string, input: PricesInput) {
+  const existing = await getById(id);
+  if (!existing) {
+    return null;
+  }
+
+  const payload: Partial<ProductRecord> = {};
+  if (input.priceSell !== undefined) {
+    payload.priceSell = asNonNegativeNumber(input.priceSell, "priceSell");
+  }
+  if (input.priceCost !== undefined) {
+    payload.priceCost = asNonNegativeNumber(input.priceCost, "priceCost");
+  }
+  if (input.priceWholesale !== undefined) {
+    payload.priceWholesale = asNonNegativeNumber(input.priceWholesale, "priceWholesale");
+  }
+
+  if (Object.keys(payload).length === 0) {
+    throw new Error("VALIDATION:At least one price field is required");
+  }
+
+  payload.updatedAt = toIsoNow();
+  const itemRef = ref(database, `${PRODUCTS_PATH}/${id}`);
+  await update(itemRef, payload);
+
+  return {
+    ...existing,
+    ...payload,
+  };
+}
+
+export async function updateProductStock(id: string, input: StockInput) {
+  const existing = await getById(id);
   if (!existing) {
     return null;
   }
@@ -272,78 +333,59 @@ export async function updateProductStock(id: string, input: StockUpdateInput) {
   const hasDelta = input.delta !== undefined;
 
   if (!hasStock && !hasDelta) {
-    throwValidation("Either stock or delta must be provided");
+    throw new Error("VALIDATION:Either stock or delta must be provided");
   }
-
   if (hasStock && hasDelta) {
-    throwValidation("Provide either stock or delta, not both");
+    throw new Error("VALIDATION:Provide either stock or delta, not both");
   }
 
   const nextStock = hasStock
-    ? requireNumber(input.stock, "stock")
-    : Number(existing.stock) + Number(input.delta);
+    ? asNonNegativeNumber(input.stock, "stock")
+    : existing.stock + Number(input.delta);
 
   if (!Number.isFinite(nextStock) || nextStock < 0) {
-    throwValidation("Resulting stock must be greater than or equal to 0");
+    throw new Error("VALIDATION:Resulting stock must be greater than or equal to 0");
   }
 
-  const updatedAt = new Date().toISOString();
-  const productRef = ref(database, `products/${id}`);
-  await update(productRef, {
+  const payload = {
     stock: nextStock,
-    updatedAt,
-  });
+    updatedAt: toIsoNow(),
+  };
+
+  const itemRef = ref(database, `${PRODUCTS_PATH}/${id}`);
+  await update(itemRef, payload);
 
   return {
     ...existing,
-    stock: nextStock,
-    updatedAt,
+    ...payload,
   };
 }
 
-export async function updateProductPrices(id: string, input: PricesUpdateInput) {
-  const existing = await getProductRecordById(id);
+export async function setProductPublishState(id: string, isPublished: unknown) {
+  const existing = await getById(id);
   if (!existing) {
     return null;
   }
 
-  const payload: Partial<ProductRecord> = {};
+  const parsed = asBoolean(isPublished, "isPublished");
+  const payload = { isPublished: parsed, updatedAt: toIsoNow() };
 
-  if (input.priceSell !== undefined) {
-    payload.priceSell = requireNumber(input.priceSell, "priceSell");
-  }
-  if (input.priceCost !== undefined) {
-    payload.priceCost = requireNumber(input.priceCost, "priceCost");
-  }
-  if (input.priceWholesale !== undefined) {
-    payload.priceWholesale = requireNumber(input.priceWholesale, "priceWholesale");
-  }
-
-  if (Object.keys(payload).length === 0) {
-    throwValidation("At least one price field is required");
-  }
-
-  const updatedAt = new Date().toISOString();
-  const productRef = ref(database, `products/${id}`);
-  await update(productRef, {
-    ...payload,
-    updatedAt,
-  });
+  const itemRef = ref(database, `${PRODUCTS_PATH}/${id}`);
+  await update(itemRef, payload);
 
   return {
     ...existing,
     ...payload,
-    updatedAt,
   };
 }
 
 export async function deleteProduct(id: string) {
-  const existing = await getProductRecordById(id);
+  const existing = await getById(id);
   if (!existing) {
     return false;
   }
 
-  const productRef = ref(database, `products/${id}`);
-  await remove(productRef);
+  const itemRef = ref(database, `${PRODUCTS_PATH}/${id}`);
+  await remove(itemRef);
   return true;
 }

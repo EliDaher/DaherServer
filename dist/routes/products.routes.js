@@ -9,5 +9,6 @@ router.post("/", products_controller_1.createProductHandler);
 router.put("/:id", products_controller_1.updateProductHandler);
 router.patch("/:id/stock", products_controller_1.updateProductStockHandler);
 router.patch("/:id/prices", products_controller_1.updateProductPricesHandler);
+router.patch("/:id/publish", products_controller_1.updateProductPublishHandler);
 router.delete("/:id", products_controller_1.deleteProductHandler);
 exports.default = router;

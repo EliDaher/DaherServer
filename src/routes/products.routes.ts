@@ -5,6 +5,7 @@ import {
   getProduct,
   getProducts,
   updateProductHandler,
+  updateProductPublishHandler,
   updateProductPricesHandler,
   updateProductStockHandler,
 } from "../controllers/products.controller";
@@ -17,6 +18,7 @@ router.post("/", createProductHandler);
 router.put("/:id", updateProductHandler);
 router.patch("/:id/stock", updateProductStockHandler);
 router.patch("/:id/prices", updateProductPricesHandler);
+router.patch("/:id/publish", updateProductPublishHandler);
 router.delete("/:id", deleteProductHandler);
 
 export default router;

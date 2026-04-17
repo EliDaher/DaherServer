@@ -11,6 +11,7 @@ import dashboardRoutes from "./dashboard.routes"
 import portsRoutes from "./post.routes";
 import posLimitsRoutes from "./posLimits.routes";
 import profitLogsRoutes from "./profitLogs.routes";
+import storeRoutes from "./store.routes";
 
 const router = Router();
 
@@ -37,5 +38,7 @@ router.use("/ports", portsRoutes);
 router.use("/pos-limits", posLimitsRoutes);
 
 router.use("/profit-logs", profitLogsRoutes);
+
+router.use("/store", storeRoutes);
 
 export default router;
