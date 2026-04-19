@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { AddSigSamer, fixWrongNumberInvoices, getDebtAgingByBalance, getInquiryLogs, getInvoicesWithStatus, getMonthlyRevenue, getSignatures, listDuplicateInvoices, listWrongNumberInvoices, removeDuplicateInvoices } from "../controllers/report.controller";
+import { AddSigSamer, fixWrongNumberInvoices, getDebtAgingByBalance, getInquiryLogs, getInvoicesWithStatus, getMonthlyRevenue, getSignatures, getTodayOverview, listDuplicateInvoices, listWrongNumberInvoices, removeDuplicateInvoices } from "../controllers/report.controller";
 
 const router = Router();
 
 
 router.get("/monthly-revenue", getMonthlyRevenue);
+router.get("/today-overview", getTodayOverview);
 
 router.get("/aging", getDebtAgingByBalance);
 

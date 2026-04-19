@@ -4,6 +4,7 @@ const express_1 = require("express");
 const report_controller_1 = require("../controllers/report.controller");
 const router = (0, express_1.Router)();
 router.get("/monthly-revenue", report_controller_1.getMonthlyRevenue);
+router.get("/today-overview", report_controller_1.getTodayOverview);
 router.get("/aging", report_controller_1.getDebtAgingByBalance);
 router.get("/invoices-status", report_controller_1.getInvoicesWithStatus);
 router.get("/listDuplicateInvoices", report_controller_1.listDuplicateInvoices);

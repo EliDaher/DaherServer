@@ -9,7 +9,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getSignatures = exports.AddSigSamer = exports.getInquiryLogs = exports.fixWrongNumberInvoices = exports.listWrongNumberInvoices = exports.removeDuplicateInvoices = exports.listDuplicateInvoices = exports.getInvoicesWithStatus = exports.getDebtAgingByBalance = exports.getMonthlyRevenue = void 0;
+exports.getTodayOverview = exports.getSignatures = exports.AddSigSamer = exports.getInquiryLogs = exports.fixWrongNumberInvoices = exports.listWrongNumberInvoices = exports.removeDuplicateInvoices = exports.listDuplicateInvoices = exports.getInvoicesWithStatus = exports.getDebtAgingByBalance = exports.getMonthlyRevenue = void 0;
+const todayOverview_service_1 = require("../services/todayOverview.service");
 const { ref, get, remove, update, child, push, set, } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 const getMonthlyRevenue = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -369,3 +370,36 @@ const getSignatures = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
 });
 exports.getSignatures = getSignatures;
+const getTodayOverview = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const dateQuery = Array.isArray(req.query.date)
+            ? req.query.date[0]
+            : req.query.date;
+        const rawLimitQuery = Array.isArray(req.query.rawLimit)
+            ? req.query.rawLimit[0]
+            : req.query.rawLimit;
+        const data = yield (0, todayOverview_service_1.getTodayOverviewReport)({
+            date: dateQuery,
+            rawLimit: rawLimitQuery,
+        });
+        return res.status(200).json({
+            success: true,
+            data,
+        });
+    }
+    catch (error) {
+        if (error instanceof Error && error.message.startsWith("VALIDATION:")) {
+            return res.status(400).json({
+                success: false,
+                message: error.message.replace("VALIDATION:", "").trim(),
+            });
+        }
+        console.error("Error generating today overview:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to generate today overview",
+            error: (error === null || error === void 0 ? void 0 : error.message) || "Unknown error",
+        });
+    }
+});
+exports.getTodayOverview = getTodayOverview;

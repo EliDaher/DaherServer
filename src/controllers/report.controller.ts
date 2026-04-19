@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { getTodayOverviewReport } from "../services/todayOverview.service";
 const {
   ref,
   get,
@@ -421,5 +422,40 @@ export const getSignatures = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error Firebase Login: ", error);
     res.status(500).json({ error: "Failed to fetch data" });
+  }
+};
+
+export const getTodayOverview = async (req: Request, res: Response) => {
+  try {
+    const dateQuery = Array.isArray(req.query.date)
+      ? req.query.date[0]
+      : req.query.date;
+    const rawLimitQuery = Array.isArray(req.query.rawLimit)
+      ? req.query.rawLimit[0]
+      : req.query.rawLimit;
+
+    const data = await getTodayOverviewReport({
+      date: dateQuery,
+      rawLimit: rawLimitQuery,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error: any) {
+    if (error instanceof Error && error.message.startsWith("VALIDATION:")) {
+      return res.status(400).json({
+        success: false,
+        message: error.message.replace("VALIDATION:", "").trim(),
+      });
+    }
+
+    console.error("Error generating today overview:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate today overview",
+      error: error?.message || "Unknown error",
+    });
   }
 };
