@@ -29,6 +29,9 @@ function mapSnapshotToRecords(value) {
         id,
         number: String((record === null || record === void 0 ? void 0 : record.number) || ""),
         company: String((record === null || record === void 0 ? void 0 : record.company) || ""),
+        note: typeof (record === null || record === void 0 ? void 0 : record.note) === "string" && record.note.trim()
+            ? record.note.trim()
+            : undefined,
         createdAt: String((record === null || record === void 0 ? void 0 : record.createdAt) || ""),
         createdBy: typeof (record === null || record === void 0 ? void 0 : record.createdBy) === "string" && record.createdBy.trim()
             ? record.createdBy.trim()
@@ -57,11 +60,12 @@ const getReportedTransactions = (_req, res) => __awaiter(void 0, void 0, void 0,
 });
 exports.getReportedTransactions = getReportedTransactions;
 const createReportedTransaction = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     try {
         const number = toRequiredString((_a = req.body) === null || _a === void 0 ? void 0 : _a.number);
         const company = toRequiredString((_b = req.body) === null || _b === void 0 ? void 0 : _b.company);
-        const createdBy = toRequiredString((_c = req.body) === null || _c === void 0 ? void 0 : _c.createdBy);
+        const note = toRequiredString((_c = req.body) === null || _c === void 0 ? void 0 : _c.note);
+        const createdBy = toRequiredString((_d = req.body) === null || _d === void 0 ? void 0 : _d.createdBy);
         if (!number || !company) {
             return res.status(400).json({
                 success: false,
@@ -81,9 +85,9 @@ const createReportedTransaction = (req, res) => __awaiter(void 0, void 0, void 0
         }
         const newRecordRef = push(rootRef);
         const id = newRecordRef.key;
-        const record = Object.assign({ id,
+        const record = Object.assign(Object.assign(Object.assign({ id,
             number,
-            company, createdAt: new Date().toISOString() }, (createdBy ? { createdBy } : {}));
+            company }, (note ? { note } : {})), { createdAt: new Date().toISOString() }), (createdBy ? { createdBy } : {}));
         yield set(newRecordRef, record);
         return res.status(201).json({
             success: true,

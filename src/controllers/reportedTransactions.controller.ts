@@ -7,6 +7,7 @@ type ReportedTransactionRecord = {
   id: string;
   number: string;
   company: string;
+  note?: string;
   createdAt: string;
   createdBy?: string;
 };
@@ -32,6 +33,10 @@ function mapSnapshotToRecords(value: Record<string, any> | null | undefined) {
     id,
     number: String(record?.number || ""),
     company: String(record?.company || ""),
+    note:
+      typeof record?.note === "string" && record.note.trim()
+        ? record.note.trim()
+        : undefined,
     createdAt: String(record?.createdAt || ""),
     createdBy:
       typeof record?.createdBy === "string" && record.createdBy.trim()
@@ -66,6 +71,7 @@ export const createReportedTransaction = async (req: Request, res: Response) => 
   try {
     const number = toRequiredString(req.body?.number);
     const company = toRequiredString(req.body?.company);
+    const note = toRequiredString(req.body?.note);
     const createdBy = toRequiredString(req.body?.createdBy);
 
     if (!number || !company) {
@@ -98,6 +104,7 @@ export const createReportedTransaction = async (req: Request, res: Response) => 
       id,
       number,
       company,
+      ...(note ? { note } : {}),
       createdAt: new Date().toISOString(),
       ...(createdBy ? { createdBy } : {}),
     };
