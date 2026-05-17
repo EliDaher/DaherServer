@@ -333,21 +333,46 @@ export const fixWrongNumberInvoices = async (req: Request, res: Response) => {
 export const getInquiryLogs = async (req: Request, res: Response) => {
   try {
     const date = req.query.date || new Date().toISOString().split("T")[0];
+    const email = String(req.query.email || "").trim().toLowerCase();
     const dbRef = ref(database);
 
     const snapshot = await get(child(dbRef, `astalamatLogs/${date}`));
     if (!snapshot.exists()) {
-      return res.status(404).json({
-        success: false,
-        message: "لا توجد بيانات لهذا اليوم",
+      return res.status(200).json({
+        success: true,
+        logs: [],
       });
     }
 
     const data = snapshot.val();
 
-    const logsArray = Object.values(data).sort(
-      (a: any, b: any) => a.timestamp - b.timestamp,
-    );
+    const logsArray = Object.values(data)
+      .filter((log: any) => {
+        if (!email) return true;
+
+        let logData = log?.data || {};
+        if (typeof logData === "string") {
+          try {
+            logData = JSON.parse(logData);
+          } catch {
+            logData = {};
+          }
+        }
+
+        const values = [
+          log?.from,
+          log?.target,
+          log?.email,
+          logData?.email,
+          logData?.content?.email,
+          logData?.request?.email,
+        ];
+
+        return values.some(
+          (value) => String(value || "").toLowerCase() === email,
+        );
+      })
+      .sort((a: any, b: any) => b.timestamp - a.timestamp);
 
     return res.status(200).json({
       success: true,
