@@ -9,9 +9,39 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getEmployeesDashboard = exports.addMofadale = exports.getDailyBalance = exports.getEmployeeBalanceTable = exports.getTotalBalance = exports.getTotalDayBalance = void 0;
-const { ref, get, child, push, set } = require("firebase/database");
+exports.getEmployeesDashboard = exports.addMofadale = exports.getBillCategoryTotals = exports.addBillInvoice = exports.getDailyBalance = exports.getEmployeeBalanceTable = exports.getTotalBalance = exports.getTotalDayBalance = void 0;
+const { ref, get, child, push, set, runTransaction } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
+const BILL_CATEGORY_LABELS = {
+    internetTotal: "إنترنت",
+    elecTotal: "كهرباء",
+    waterTotal: "مياه",
+    phoneTotal: "أرضي",
+};
+const BILL_CATEGORY_KEYS = Object.keys(BILL_CATEGORY_LABELS);
+function toNumber(value) {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : 0;
+}
+function normalizeCategoryTotals(value) {
+    return {
+        internetTotal: toNumber(value === null || value === void 0 ? void 0 : value.internetTotal),
+        elecTotal: toNumber(value === null || value === void 0 ? void 0 : value.elecTotal),
+        waterTotal: toNumber(value === null || value === void 0 ? void 0 : value.waterTotal),
+        phoneTotal: toNumber(value === null || value === void 0 ? void 0 : value.phoneTotal),
+    };
+}
+function sumCategoryTotals(totals) {
+    return BILL_CATEGORY_KEYS.reduce((sum, key) => sum + totals[key], 0);
+}
+function emptyCategoryTotals() {
+    return {
+        internetTotal: 0,
+        elecTotal: 0,
+        waterTotal: 0,
+        phoneTotal: 0,
+    };
+}
 const getTotalDayBalance = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const date = req.query.date || new Date().toISOString().split("T")[0];
@@ -137,6 +167,115 @@ const getDailyBalance = (req, res) => __awaiter(void 0, void 0, void 0, function
     }
 });
 exports.getDailyBalance = getDailyBalance;
+const addBillInvoice = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c;
+    try {
+        const employee = String(((_a = req.body) === null || _a === void 0 ? void 0 : _a.employee) || "").trim();
+        const details = Array.isArray((_b = req.body) === null || _b === void 0 ? void 0 : _b.details) ? req.body.details : [];
+        const categoryTotals = normalizeCategoryTotals((_c = req.body) === null || _c === void 0 ? void 0 : _c.categoryTotals);
+        const amount = sumCategoryTotals(categoryTotals);
+        const date = new Date().toISOString().split("T")[0];
+        const now = new Date().toISOString();
+        if (!employee) {
+            return res.status(400).json({
+                success: false,
+                message: "employee is required.",
+            });
+        }
+        if (amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "categoryTotals must include a positive amount.",
+            });
+        }
+        const invoiceRef = push(ref(database, `dailyTotal/${date}/${employee}`));
+        const operation = {
+            id: invoiceRef.key,
+            amount,
+            categoryTotals,
+            details,
+            employee,
+            timestamp: date,
+            createdAt: now,
+        };
+        yield set(invoiceRef, operation);
+        const summaryRef = ref(database, `billCategoryTotals/${date}/${employee}`);
+        yield runTransaction(summaryRef, (currentSummary) => {
+            const previousTotals = normalizeCategoryTotals(currentSummary);
+            const nextTotals = BILL_CATEGORY_KEYS.reduce((acc, key) => (Object.assign(Object.assign({}, acc), { [key]: previousTotals[key] + categoryTotals[key] })), emptyCategoryTotals());
+            return Object.assign(Object.assign(Object.assign({}, currentSummary), nextTotals), { date,
+                employee, total: sumCategoryTotals(nextTotals), operationCount: toNumber(currentSummary === null || currentSummary === void 0 ? void 0 : currentSummary.operationCount) + 1, updatedAt: now });
+        });
+        return res.status(200).json({
+            success: true,
+            message: "Bill invoice added successfully.",
+            id: invoiceRef.key,
+            data: operation,
+        });
+    }
+    catch (error) {
+        console.error("Error adding bill invoice:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to add bill invoice.",
+            error: error.message,
+        });
+    }
+});
+exports.addBillInvoice = addBillInvoice;
+const getBillCategoryTotals = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const date = String(req.query.date || new Date().toISOString().split("T")[0]);
+        const employeeFilter = String(req.query.employee || "all").trim();
+        const categoryFilter = String(req.query.category || "all").trim();
+        const snapshot = yield get(child(ref(database), `billCategoryTotals/${date}`));
+        const rows = snapshot.exists()
+            ? Object.entries(snapshot.val()).map(([employee, value]) => (Object.assign(Object.assign({ employee }, normalizeCategoryTotals(value)), { total: toNumber(value === null || value === void 0 ? void 0 : value.total) || sumCategoryTotals(normalizeCategoryTotals(value)), operationCount: toNumber(value === null || value === void 0 ? void 0 : value.operationCount), updatedAt: (value === null || value === void 0 ? void 0 : value.updatedAt) || null })))
+            : [];
+        const filteredRows = employeeFilter && employeeFilter !== "all"
+            ? rows.filter((row) => row.employee === employeeFilter)
+            : rows;
+        const totals = filteredRows.reduce((acc, row) => {
+            BILL_CATEGORY_KEYS.forEach((key) => {
+                acc[key] += row[key];
+            });
+            return acc;
+        }, emptyCategoryTotals());
+        const byEmployee = filteredRows.map((row) => ({
+            employee: row.employee,
+            internetTotal: categoryFilter === "all" || categoryFilter === "internetTotal" ? row.internetTotal : 0,
+            elecTotal: categoryFilter === "all" || categoryFilter === "elecTotal" ? row.elecTotal : 0,
+            waterTotal: categoryFilter === "all" || categoryFilter === "waterTotal" ? row.waterTotal : 0,
+            phoneTotal: categoryFilter === "all" || categoryFilter === "phoneTotal" ? row.phoneTotal : 0,
+            total: categoryFilter === "all"
+                ? row.total
+                : toNumber(row[categoryFilter]),
+        }));
+        const byCategory = BILL_CATEGORY_KEYS.map((key) => ({
+            category: key,
+            label: BILL_CATEGORY_LABELS[key],
+            total: totals[key],
+        })).filter((row) => categoryFilter === "all" || row.category === categoryFilter);
+        const filteredTotals = categoryFilter === "all"
+            ? Object.assign(Object.assign({}, totals), { total: sumCategoryTotals(totals) }) : Object.assign(Object.assign({}, emptyCategoryTotals()), { [categoryFilter]: toNumber(totals[categoryFilter]), total: toNumber(totals[categoryFilter]) });
+        return res.status(200).json({
+            success: true,
+            date,
+            totals: filteredTotals,
+            byEmployee,
+            byCategory,
+        });
+    }
+    catch (error) {
+        console.error("Error fetching bill category totals:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch bill category totals.",
+            error: error.message,
+        });
+    }
+});
+exports.getBillCategoryTotals = getBillCategoryTotals;
 const addMofadale = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const subscribersRef = ref(database, "mofadale");

@@ -1,11 +1,56 @@
 import { Request, Response } from "express";
-const { ref, get, child, push, set } = require("firebase/database");
+const { ref, get, child, push, set, runTransaction } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 
 interface UserSummary {
   id: string;
   count: number;
   total: number;
+}
+
+type BillCategoryKey =
+  | "internetTotal"
+  | "elecTotal"
+  | "waterTotal"
+  | "phoneTotal";
+
+type BillCategoryTotals = Record<BillCategoryKey, number>;
+
+const BILL_CATEGORY_LABELS: Record<BillCategoryKey, string> = {
+  internetTotal: "إنترنت",
+  elecTotal: "كهرباء",
+  waterTotal: "مياه",
+  phoneTotal: "أرضي",
+};
+
+const BILL_CATEGORY_KEYS = Object.keys(BILL_CATEGORY_LABELS) as BillCategoryKey[];
+
+function toNumber(value: unknown) {
+  const numericValue = Number(value);
+
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function normalizeCategoryTotals(value: any): BillCategoryTotals {
+  return {
+    internetTotal: toNumber(value?.internetTotal),
+    elecTotal: toNumber(value?.elecTotal),
+    waterTotal: toNumber(value?.waterTotal),
+    phoneTotal: toNumber(value?.phoneTotal),
+  };
+}
+
+function sumCategoryTotals(totals: BillCategoryTotals) {
+  return BILL_CATEGORY_KEYS.reduce((sum, key) => sum + totals[key], 0);
+}
+
+function emptyCategoryTotals(): BillCategoryTotals {
+  return {
+    internetTotal: 0,
+    elecTotal: 0,
+    waterTotal: 0,
+    phoneTotal: 0,
+  };
 }
 
 export const getTotalDayBalance = async (req: Request, res: Response) => {
@@ -150,6 +195,160 @@ export const getDailyBalance = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("حدث خطأ أثناء جلب بيانات الأرصدة:", error.message);
     return res.status(500).json({ error: "فشل في جلب بيانات الأرصدة." });
+  }
+};
+
+export const addBillInvoice = async (req: Request, res: Response) => {
+  try {
+    const employee = String(req.body?.employee || "").trim();
+    const details = Array.isArray(req.body?.details) ? req.body.details : [];
+    const categoryTotals = normalizeCategoryTotals(req.body?.categoryTotals);
+    const amount = sumCategoryTotals(categoryTotals);
+    const date = new Date().toISOString().split("T")[0];
+    const now = new Date().toISOString();
+
+    if (!employee) {
+      return res.status(400).json({
+        success: false,
+        message: "employee is required.",
+      });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "categoryTotals must include a positive amount.",
+      });
+    }
+
+    const invoiceRef = push(ref(database, `dailyTotal/${date}/${employee}`));
+    const operation = {
+      id: invoiceRef.key,
+      amount,
+      categoryTotals,
+      details,
+      employee,
+      timestamp: date,
+      createdAt: now,
+    };
+
+    await set(invoiceRef, operation);
+
+    const summaryRef = ref(database, `billCategoryTotals/${date}/${employee}`);
+
+    await runTransaction(summaryRef, (currentSummary: any) => {
+      const previousTotals = normalizeCategoryTotals(currentSummary);
+      const nextTotals = BILL_CATEGORY_KEYS.reduce(
+        (acc, key) => ({
+          ...acc,
+          [key]: previousTotals[key] + categoryTotals[key],
+        }),
+        emptyCategoryTotals(),
+      );
+
+      return {
+        ...currentSummary,
+        ...nextTotals,
+        date,
+        employee,
+        total: sumCategoryTotals(nextTotals),
+        operationCount: toNumber(currentSummary?.operationCount) + 1,
+        updatedAt: now,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Bill invoice added successfully.",
+      id: invoiceRef.key,
+      data: operation,
+    });
+  } catch (error: any) {
+    console.error("Error adding bill invoice:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add bill invoice.",
+      error: error.message,
+    });
+  }
+};
+
+export const getBillCategoryTotals = async (req: Request, res: Response) => {
+  try {
+    const date = String(
+      req.query.date || new Date().toISOString().split("T")[0],
+    );
+    const employeeFilter = String(req.query.employee || "all").trim();
+    const categoryFilter = String(req.query.category || "all").trim();
+    const snapshot = await get(child(ref(database), `billCategoryTotals/${date}`));
+
+    const rows = snapshot.exists()
+      ? Object.entries(snapshot.val()).map(([employee, value]: [string, any]) => ({
+          employee,
+          ...normalizeCategoryTotals(value),
+          total: toNumber(value?.total) || sumCategoryTotals(normalizeCategoryTotals(value)),
+          operationCount: toNumber(value?.operationCount),
+          updatedAt: value?.updatedAt || null,
+        }))
+      : [];
+
+    const filteredRows =
+      employeeFilter && employeeFilter !== "all"
+        ? rows.filter((row) => row.employee === employeeFilter)
+        : rows;
+
+    const totals = filteredRows.reduce(
+      (acc, row) => {
+        BILL_CATEGORY_KEYS.forEach((key) => {
+          acc[key] += row[key];
+        });
+
+        return acc;
+      },
+      emptyCategoryTotals(),
+    );
+
+    const byEmployee = filteredRows.map((row) => ({
+      employee: row.employee,
+      internetTotal: categoryFilter === "all" || categoryFilter === "internetTotal" ? row.internetTotal : 0,
+      elecTotal: categoryFilter === "all" || categoryFilter === "elecTotal" ? row.elecTotal : 0,
+      waterTotal: categoryFilter === "all" || categoryFilter === "waterTotal" ? row.waterTotal : 0,
+      phoneTotal: categoryFilter === "all" || categoryFilter === "phoneTotal" ? row.phoneTotal : 0,
+      total:
+        categoryFilter === "all"
+          ? row.total
+          : toNumber(row[categoryFilter as BillCategoryKey]),
+    }));
+
+    const byCategory = BILL_CATEGORY_KEYS.map((key) => ({
+      category: key,
+      label: BILL_CATEGORY_LABELS[key],
+      total: totals[key],
+    })).filter((row) => categoryFilter === "all" || row.category === categoryFilter);
+
+    const filteredTotals =
+      categoryFilter === "all"
+        ? { ...totals, total: sumCategoryTotals(totals) }
+        : {
+            ...emptyCategoryTotals(),
+            [categoryFilter]: toNumber(totals[categoryFilter as BillCategoryKey]),
+            total: toNumber(totals[categoryFilter as BillCategoryKey]),
+          };
+
+    return res.status(200).json({
+      success: true,
+      date,
+      totals: filteredTotals,
+      byEmployee,
+      byCategory,
+    });
+  } catch (error: any) {
+    console.error("Error fetching bill category totals:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch bill category totals.",
+      error: error.message,
+    });
   }
 };
 

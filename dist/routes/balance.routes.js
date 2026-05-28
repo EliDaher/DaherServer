@@ -8,5 +8,7 @@ router.get("/getTotalBalance", balance_controller_1.getTotalBalance);
 router.get("/getEmployeeBalanceTable", balance_controller_1.getEmployeeBalanceTable);
 router.get("/getDailyBalance", balance_controller_1.getDailyBalance);
 router.get("/employeesDashboard", balance_controller_1.getEmployeesDashboard);
+router.post("/addBillInvoice", balance_controller_1.addBillInvoice);
+router.get("/getBillCategoryTotals", balance_controller_1.getBillCategoryTotals);
 router.post("/addMofadale", balance_controller_1.addMofadale);
 exports.default = router;
