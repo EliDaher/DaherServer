@@ -13,6 +13,112 @@ const {
 } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 
+const MONTHLY_INVOICE_TIMEZONE = "Asia/Damascus";
+
+type BalanceFixReportItem = {
+  subscriberId: string;
+  recordedBalance: number;
+  expectedBalance: number;
+  fixed: boolean;
+};
+
+function getMonthlyInvoicePeriod(monthInput?: unknown, yearInput?: unknown) {
+  const [currentYear, currentMonth] = new Date()
+    .toLocaleDateString("en-CA", { timeZone: MONTHLY_INVOICE_TIMEZONE })
+    .split("-");
+
+  const monthNumber = Number(monthInput ?? currentMonth);
+  const yearNumber = Number(yearInput ?? currentYear);
+
+  if (
+    !Number.isInteger(monthNumber) ||
+    monthNumber < 1 ||
+    monthNumber > 12 ||
+    !Number.isInteger(yearNumber) ||
+    yearNumber < 2000 ||
+    yearNumber > 2100
+  ) {
+    return null;
+  }
+
+  const year = String(yearNumber);
+  const month = String(monthNumber).padStart(2, "0");
+
+  return {
+    year,
+    month,
+    invoiceDate: `${year}-${month}-01`,
+    details: `اشتراك شهري عن ${month}-${year}`,
+  };
+}
+
+async function verifyAndFixSubscriberBalances() {
+  const subscribersSnap = await get(ref(database, "Subscribers"));
+  const subscribers = subscribersSnap.val();
+
+  if (!subscribers) {
+    return {
+      hasSubscribers: false,
+      fixedCount: 0,
+      report: [] as BalanceFixReportItem[],
+    };
+  }
+
+  const [invoicesSnap, paymentsSnap] = await Promise.all([
+    get(ref(database, "Invoices")),
+    get(ref(database, "Payments")),
+  ]);
+
+  const invoices = invoicesSnap.val() || {};
+  const payments = paymentsSnap.val() || {};
+
+  const updates: Record<string, number> = {};
+  const report: BalanceFixReportItem[] = [];
+
+  Object.keys(subscribers).forEach((userId) => {
+    const subscriber = subscribers[userId];
+    const recordedBalance = Number(subscriber.Balance) || 0;
+
+    let totalInvoices = 0;
+    Object.values(invoices).forEach((invoice: any) => {
+      if (String(invoice.SubscriberID) === String(userId)) {
+        totalInvoices += Number(invoice.Amount) || 0;
+      }
+    });
+
+    let totalPayments = 0;
+    Object.values(payments).forEach((payment: any) => {
+      if (String(payment.SubscriberID) === String(userId)) {
+        totalPayments += Number(payment.Amount) || 0;
+      }
+    });
+
+    const expectedBalance = totalPayments - totalInvoices;
+    const fixed = expectedBalance !== recordedBalance;
+
+    if (fixed) {
+      updates[`Subscribers/${userId}/Balance`] = expectedBalance;
+    }
+
+    report.push({
+      subscriberId: userId,
+      recordedBalance,
+      expectedBalance,
+      fixed,
+    });
+  });
+
+  if (Object.keys(updates).length > 0) {
+    await update(ref(database), updates);
+  }
+
+  return {
+    hasSubscribers: true,
+    fixedCount: report.filter((item) => item.fixed).length,
+    report,
+  };
+}
+
 export const getCustomers = async (req: Request, res: Response) => {
   try {
     const dbRef = ref(database);
@@ -399,6 +505,137 @@ export const addInvoice = async (req: Request, res: Response) => {
   }
 };
 
+export const createMonthlyInvoices = async (req: Request, res: Response) => {
+  try {
+    const force =
+      req.body?.force === true ||
+      req.query.force === "true" ||
+      req.query.force === "1";
+
+    const period = getMonthlyInvoicePeriod(req.body?.month, req.body?.year);
+
+    if (!period) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid month or year. Month must be 1-12.",
+      });
+    }
+
+    const subscribersRef = ref(database, "Subscribers");
+    const invoicesRef = ref(database, "Invoices");
+    const { year, month, invoiceDate, details } = period;
+
+    const [subscribersSnapshot, invoicesSnapshot] = await Promise.all([
+      get(subscribersRef),
+      get(invoicesRef),
+    ]);
+
+    const subscribers = subscribersSnapshot.val();
+
+    if (!subscribers) {
+      return res.status(200).json({
+        success: true,
+        message: "No subscribers found.",
+        createdCount: 0,
+        skippedCount: 0,
+      });
+    }
+
+    const existingInvoices = invoicesSnapshot.val() || {};
+    const existingMonthlyInvoices = new Set<string>();
+
+    Object.values(existingInvoices).forEach((invoice: any) => {
+      if (
+        invoice?.Date === invoiceDate &&
+        invoice?.Details === details &&
+        invoice?.SubscriberID !== undefined
+      ) {
+        existingMonthlyInvoices.add(String(invoice.SubscriberID));
+      }
+    });
+
+    const updates: Record<string, any> = {};
+    const createdInvoices: Array<{
+      invoiceId: string;
+      subscriberId: string;
+      amount: number;
+      newBalance: number;
+    }> = [];
+    const skippedSubscribers: string[] = [];
+    let totalAmount = 0;
+
+    Object.keys(subscribers).forEach((userId) => {
+      const subscriber = subscribers[userId];
+      const monthlyFee = Number(subscriber?.MonthlyFee);
+
+      if (!Number.isFinite(monthlyFee) || monthlyFee <= 0) {
+        return;
+      }
+
+      if (!force && existingMonthlyInvoices.has(String(userId))) {
+        skippedSubscribers.push(String(userId));
+        return;
+      }
+
+      const newInvoiceRef = push(invoicesRef);
+      const invoiceId = newInvoiceRef.key;
+
+      if (!invoiceId) {
+        return;
+      }
+
+      const currentBalance = Number(subscriber.Balance) || 0;
+      const newBalance = currentBalance - monthlyFee;
+
+      updates[`Invoices/${invoiceId}`] = {
+        Amount: monthlyFee,
+        Date: invoiceDate,
+        Details: details,
+        InvoiceID: invoiceId,
+        SubscriberID: String(userId),
+        Status: "Unpaid",
+        id: invoiceId,
+      };
+
+      updates[`Subscribers/${userId}/Balance`] = newBalance;
+      totalAmount += monthlyFee;
+      createdInvoices.push({
+        invoiceId,
+        subscriberId: String(userId),
+        amount: monthlyFee,
+        newBalance,
+      });
+    });
+
+    if (Object.keys(updates).length > 0) {
+      await update(ref(database), updates);
+    }
+
+    const balanceFix = await verifyAndFixSubscriberBalances();
+
+    return res.status(200).json({
+      success: true,
+      message: "Monthly invoices created successfully.",
+      period: `${month}-${year}`,
+      invoiceDate,
+      createdCount: createdInvoices.length,
+      skippedCount: skippedSubscribers.length,
+      totalAmount,
+      force,
+      createdInvoices,
+      skippedSubscribers,
+      balanceFixedCount: balanceFix.fixedCount,
+      balanceReport: balanceFix.report,
+    });
+  } catch (error: any) {
+    console.error("Error creating monthly invoices:", error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || "Internal server error",
+    });
+  }
+};
+
 const fetchData = async (path: any) => {
   try {
     const dbRef = ref(database);
@@ -434,79 +671,16 @@ export const getBalance = async (req: Request, res: Response) => {
 
 export const verifyAndFixBalances = async (req: Request, res: Response) => {
   try {
-    // تحميل المشتركين
-    const subscribersSnap = await get(ref(database, "Subscribers"));
-    const subscribers = subscribersSnap.val();
+    const result = await verifyAndFixSubscriberBalances();
 
-    if (!subscribers) {
-      return res.status(200).json({ message: "❗ لا يوجد مشتركين!" });
-    }
-
-    // تحميل الفواتير
-    const invoicesSnap = await get(ref(database, "Invoices"));
-    const invoices = invoicesSnap.val() || {};
-
-    // تحميل الدفعات
-    const paymentsSnap = await get(ref(database, "Payments"));
-    const payments = paymentsSnap.val() || {};
-
-    const updates: Record<string, number> = {};
-    const report: Array<{
-      subscriberId: string;
-      recordedBalance: number;
-      expectedBalance: number;
-      fixed: boolean;
-    }> = [];
-
-    Object.keys(subscribers).forEach((userId) => {
-      const subscriber = subscribers[userId];
-      const recordedBalance = Number(subscriber.Balance) || 0;
-
-      // جمع الفواتير
-      let totalInvoices = 0;
-      Object.values(invoices).forEach((invoice: any) => {
-        if (String(invoice.SubscriberID) === String(userId)) {
-          totalInvoices += Number(invoice.Amount) || 0;
-        }
-      });
-
-      // جمع الدفعات
-      let totalPayments = 0;
-      Object.values(payments).forEach((payment: any) => {
-        if (String(payment.SubscriberID) === String(userId)) {
-          totalPayments += Number(payment.Amount) || 0;
-        }
-      });
-
-      const expectedBalance = totalPayments - totalInvoices;
-
-      if (expectedBalance !== recordedBalance) {
-        // نضيف تعديل الرصيد
-        updates[`Subscribers/${userId}/Balance`] = expectedBalance;
-        report.push({
-          subscriberId: userId,
-          recordedBalance,
-          expectedBalance,
-          fixed: true,
-        });
-      } else {
-        report.push({
-          subscriberId: userId,
-          recordedBalance,
-          expectedBalance,
-          fixed: false,
-        });
-      }
-    });
-
-    // إذا هناك تعديلات نقوم بتحديثها
-    if (Object.keys(updates).length > 0) {
-      await update(ref(database), updates);
+    if (!result.hasSubscribers) {
+      return res.status(200).json({ message: "No subscribers found." });
     }
 
     return res.status(200).json({
-      message: "✅ تم التحقق وتصحيح الأرصدة.",
-      report,
+      message: "Balances verified and fixed.",
+      fixedCount: result.fixedCount,
+      report: result.report,
     });
   } catch (error: any) {
     console.error("❌ خطأ أثناء التحقق:", error.message);

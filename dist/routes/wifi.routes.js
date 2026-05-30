@@ -11,6 +11,7 @@ router.put("/updateCustomer/:id", wifi_controller_1.updateCustomer);
 router.delete("/:id", wifi_controller_1.deleteCustomer);
 router.post("/addPayment/", wifi_controller_1.addPayment);
 router.post("/addInvoice", wifi_controller_1.addInvoice);
+router.post("/createMonthlyInvoices", wifi_controller_1.createMonthlyInvoices);
 router.get('/getWifiBalance', wifi_controller_1.getBalance);
 router.get('/verifyAndFixBalances', wifi_controller_1.verifyAndFixBalances);
 router.get('/verifyBalances', wifi_controller_1.verifyBalances);

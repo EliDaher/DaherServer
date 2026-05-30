@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { addCustomers, addInvoice, addPayment, addWifiExpenses, deleteCustomer, getBalance, getCustomerById, getCustomers, getTransactionsForCustomer, updateCustomer, verifyAndFixBalances, verifyBalances } from "../controllers/wifi.controller";
+import { addCustomers, addInvoice, addPayment, addWifiExpenses, createMonthlyInvoices, deleteCustomer, getBalance, getCustomerById, getCustomers, getTransactionsForCustomer, updateCustomer, verifyAndFixBalances, verifyBalances } from "../controllers/wifi.controller";
 
 const router = Router();
 
@@ -18,6 +18,8 @@ router.delete("/:id", deleteCustomer);
 router.post("/addPayment/", addPayment);
 
 router.post("/addInvoice", addInvoice);
+
+router.post("/createMonthlyInvoices", createMonthlyInvoices);
 
 router.get('/getWifiBalance', getBalance);
 

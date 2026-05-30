@@ -288,16 +288,41 @@ exports.fixWrongNumberInvoices = fixWrongNumberInvoices;
 const getInquiryLogs = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const date = req.query.date || new Date().toISOString().split("T")[0];
+        const email = String(req.query.email || "").trim().toLowerCase();
         const dbRef = ref(database);
         const snapshot = yield get(child(dbRef, `astalamatLogs/${date}`));
         if (!snapshot.exists()) {
-            return res.status(404).json({
-                success: false,
-                message: "لا توجد بيانات لهذا اليوم",
+            return res.status(200).json({
+                success: true,
+                logs: [],
             });
         }
         const data = snapshot.val();
-        const logsArray = Object.values(data).sort((a, b) => a.timestamp - b.timestamp);
+        const logsArray = Object.values(data)
+            .filter((log) => {
+            var _a, _b;
+            if (!email)
+                return true;
+            let logData = (log === null || log === void 0 ? void 0 : log.data) || {};
+            if (typeof logData === "string") {
+                try {
+                    logData = JSON.parse(logData);
+                }
+                catch (_c) {
+                    logData = {};
+                }
+            }
+            const values = [
+                log === null || log === void 0 ? void 0 : log.from,
+                log === null || log === void 0 ? void 0 : log.target,
+                log === null || log === void 0 ? void 0 : log.email,
+                logData === null || logData === void 0 ? void 0 : logData.email,
+                (_a = logData === null || logData === void 0 ? void 0 : logData.content) === null || _a === void 0 ? void 0 : _a.email,
+                (_b = logData === null || logData === void 0 ? void 0 : logData.request) === null || _b === void 0 ? void 0 : _b.email,
+            ];
+            return values.some((value) => String(value || "").toLowerCase() === email);
+        })
+            .sort((a, b) => b.timestamp - a.timestamp);
         return res.status(200).json({
             success: true,
             logs: logsArray,
