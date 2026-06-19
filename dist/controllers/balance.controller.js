@@ -9,8 +9,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getEmployeesDashboard = exports.addMofadale = exports.getBillCategoryTotals = exports.addBillInvoice = exports.getDailyBalance = exports.getEmployeeBalanceTable = exports.getTotalBalance = exports.getTotalDayBalance = void 0;
-const { ref, get, child, push, set, runTransaction } = require("firebase/database");
+exports.getEmployeesDashboard = exports.addMofadale = exports.updateElectricityTransactionReviewed = exports.getElectricityTransactions = exports.getBillCategoryTotals = exports.addBillInvoice = exports.getDailyBalance = exports.getEmployeeBalanceTable = exports.getTotalBalance = exports.getTotalDayBalance = void 0;
+const { ref, get, child, push, set, update, runTransaction } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 const BILL_CATEGORY_LABELS = {
     internetTotal: "إنترنت",
@@ -41,6 +41,22 @@ function emptyCategoryTotals() {
         waterTotal: 0,
         phoneTotal: 0,
     };
+}
+function isBillCategoryKey(value) {
+    return BILL_CATEGORY_KEYS.includes(value);
+}
+function normalizeInvoiceDetail(value) {
+    const category = isBillCategoryKey(value === null || value === void 0 ? void 0 : value.category) ? value.category : undefined;
+    return Object.assign(Object.assign({}, value), (category ? { category } : {}));
+}
+function toReviewedBoolean(value) {
+    if (typeof value === "boolean") {
+        return value;
+    }
+    if (typeof value === "string") {
+        return value === "true" || value === "reviewed" || value === "1";
+    }
+    return Boolean(value);
 }
 const getTotalDayBalance = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -171,7 +187,9 @@ const addBillInvoice = (req, res) => __awaiter(void 0, void 0, void 0, function*
     var _a, _b, _c;
     try {
         const employee = String(((_a = req.body) === null || _a === void 0 ? void 0 : _a.employee) || "").trim();
-        const details = Array.isArray((_b = req.body) === null || _b === void 0 ? void 0 : _b.details) ? req.body.details : [];
+        const details = Array.isArray((_b = req.body) === null || _b === void 0 ? void 0 : _b.details)
+            ? req.body.details.map(normalizeInvoiceDetail)
+            : [];
         const categoryTotals = normalizeCategoryTotals((_c = req.body) === null || _c === void 0 ? void 0 : _c.categoryTotals);
         const amount = sumCategoryTotals(categoryTotals);
         const date = new Date().toISOString().split("T")[0];
@@ -199,6 +217,25 @@ const addBillInvoice = (req, res) => __awaiter(void 0, void 0, void 0, function*
             createdAt: now,
         };
         yield set(invoiceRef, operation);
+        const electricityDetails = details.filter((detail) => detail.category === "elecTotal");
+        yield Promise.all(electricityDetails.map((detail) => {
+            const electricityRef = push(ref(database, `billElectricityTransactions/${date}`));
+            const electricityTransaction = {
+                id: electricityRef.key,
+                invoiceId: invoiceRef.key,
+                employee,
+                date,
+                createdAt: now,
+                reviewed: false,
+                category: "elecTotal",
+                customerName: detail.customerName || "",
+                customerNumber: detail.customerNumber || "",
+                customerDetails: detail.customerDetails || "",
+                invoiceNumber: detail.invoiceNumber || "",
+                invoiceValue: toNumber(detail.invoiceValue),
+            };
+            return set(electricityRef, electricityTransaction);
+        }));
         const summaryRef = ref(database, `billCategoryTotals/${date}/${employee}`);
         yield runTransaction(summaryRef, (currentSummary) => {
             const previousTotals = normalizeCategoryTotals(currentSummary);
@@ -276,6 +313,84 @@ const getBillCategoryTotals = (req, res) => __awaiter(void 0, void 0, void 0, fu
     }
 });
 exports.getBillCategoryTotals = getBillCategoryTotals;
+const getElectricityTransactions = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const date = String(req.query.date || new Date().toISOString().split("T")[0]);
+        const employeeFilter = String(req.query.employee || "all").trim();
+        const reviewedFilter = String(req.query.reviewed || "all").trim();
+        const snapshot = yield get(child(ref(database), `billElectricityTransactions/${date}`));
+        const rows = snapshot.exists()
+            ? Object.entries(snapshot.val()).map(([id, value]) => (Object.assign(Object.assign({ id }, value), { reviewed: Boolean(value === null || value === void 0 ? void 0 : value.reviewed) })))
+            : [];
+        const filteredRows = rows
+            .filter((row) => employeeFilter && employeeFilter !== "all"
+            ? row.employee === employeeFilter
+            : true)
+            .filter((row) => reviewedFilter && reviewedFilter !== "all"
+            ? row.reviewed === toReviewedBoolean(reviewedFilter)
+            : true)
+            .sort((a, b) => {
+            const aTime = new Date(a.createdAt || 0).getTime();
+            const bTime = new Date(b.createdAt || 0).getTime();
+            return bTime - aTime;
+        });
+        return res.status(200).json({
+            success: true,
+            date,
+            data: filteredRows,
+        });
+    }
+    catch (error) {
+        console.error("Error fetching electricity transactions:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch electricity transactions.",
+            error: error.message,
+        });
+    }
+});
+exports.getElectricityTransactions = getElectricityTransactions;
+const updateElectricityTransactionReviewed = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b;
+    try {
+        const id = String(req.params.id || "").trim();
+        const date = String(((_a = req.body) === null || _a === void 0 ? void 0 : _a.date) || "").trim();
+        const reviewed = toReviewedBoolean((_b = req.body) === null || _b === void 0 ? void 0 : _b.reviewed);
+        const now = new Date().toISOString();
+        if (!id || !date) {
+            return res.status(400).json({
+                success: false,
+                message: "id and date are required.",
+            });
+        }
+        const transactionRef = ref(database, `billElectricityTransactions/${date}/${id}`);
+        const snapshot = yield get(transactionRef);
+        if (!snapshot.exists()) {
+            return res.status(404).json({
+                success: false,
+                message: "Electricity transaction not found.",
+            });
+        }
+        yield update(transactionRef, {
+            reviewed,
+            reviewedAt: now,
+        });
+        return res.status(200).json({
+            success: true,
+            data: Object.assign(Object.assign({}, snapshot.val()), { id,
+                reviewed, reviewedAt: now }),
+        });
+    }
+    catch (error) {
+        console.error("Error updating electricity transaction:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to update electricity transaction.",
+            error: error.message,
+        });
+    }
+});
+exports.updateElectricityTransactionReviewed = updateElectricityTransactionReviewed;
 const addMofadale = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const subscribersRef = ref(database, "mofadale");

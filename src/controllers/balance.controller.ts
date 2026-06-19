@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-const { ref, get, child, push, set, runTransaction } = require("firebase/database");
+const { ref, get, child, push, set, update, runTransaction } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 
 interface UserSummary {
@@ -15,6 +15,15 @@ type BillCategoryKey =
   | "phoneTotal";
 
 type BillCategoryTotals = Record<BillCategoryKey, number>;
+
+type BillInvoiceDetail = {
+  category?: BillCategoryKey;
+  customerDetails?: string;
+  customerName?: string;
+  customerNumber?: string;
+  invoiceNumber?: string;
+  invoiceValue?: number | string;
+};
 
 const BILL_CATEGORY_LABELS: Record<BillCategoryKey, string> = {
   internetTotal: "إنترنت",
@@ -51,6 +60,31 @@ function emptyCategoryTotals(): BillCategoryTotals {
     waterTotal: 0,
     phoneTotal: 0,
   };
+}
+
+function isBillCategoryKey(value: unknown): value is BillCategoryKey {
+  return BILL_CATEGORY_KEYS.includes(value as BillCategoryKey);
+}
+
+function normalizeInvoiceDetail(value: any): BillInvoiceDetail {
+  const category = isBillCategoryKey(value?.category) ? value.category : undefined;
+
+  return {
+    ...value,
+    ...(category ? { category } : {}),
+  };
+}
+
+function toReviewedBoolean(value: unknown) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return value === "true" || value === "reviewed" || value === "1";
+  }
+
+  return Boolean(value);
 }
 
 export const getTotalDayBalance = async (req: Request, res: Response) => {
@@ -201,7 +235,9 @@ export const getDailyBalance = async (req: Request, res: Response) => {
 export const addBillInvoice = async (req: Request, res: Response) => {
   try {
     const employee = String(req.body?.employee || "").trim();
-    const details = Array.isArray(req.body?.details) ? req.body.details : [];
+    const details: BillInvoiceDetail[] = Array.isArray(req.body?.details)
+      ? req.body.details.map(normalizeInvoiceDetail)
+      : [];
     const categoryTotals = normalizeCategoryTotals(req.body?.categoryTotals);
     const amount = sumCategoryTotals(categoryTotals);
     const date = new Date().toISOString().split("T")[0];
@@ -214,12 +250,12 @@ export const addBillInvoice = async (req: Request, res: Response) => {
       });
     }
 
-    if (amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "categoryTotals must include a positive amount.",
-      });
-    }
+    // if (amount <= 0) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "categoryTotals must include a positive amount.",
+    //   });
+    // }
 
     const invoiceRef = push(ref(database, `dailyTotal/${date}/${employee}`));
     const operation = {
@@ -233,6 +269,32 @@ export const addBillInvoice = async (req: Request, res: Response) => {
     };
 
     await set(invoiceRef, operation);
+
+    const electricityDetails = details.filter(
+      (detail) => detail.category === "elecTotal",
+    );
+
+    await Promise.all(
+      electricityDetails.map((detail) => {
+        const electricityRef = push(ref(database, `billElectricityTransactions/${date}`));
+        const electricityTransaction = {
+          id: electricityRef.key,
+          invoiceId: invoiceRef.key,
+          employee,
+          date,
+          createdAt: now,
+          reviewed: false,
+          category: "elecTotal",
+          customerName: detail.customerName || "",
+          customerNumber: detail.customerNumber || "",
+          customerDetails: detail.customerDetails || "",
+          invoiceNumber: detail.invoiceNumber || "",
+          invoiceValue: toNumber(detail.invoiceValue),
+        };
+
+        return set(electricityRef, electricityTransaction);
+      }),
+    );
 
     const summaryRef = ref(database, `billCategoryTotals/${date}/${employee}`);
 
@@ -347,6 +409,109 @@ export const getBillCategoryTotals = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch bill category totals.",
+      error: error.message,
+    });
+  }
+};
+
+export const getElectricityTransactions = async (req: Request, res: Response) => {
+  try {
+    const date = String(
+      req.query.date || new Date().toISOString().split("T")[0],
+    );
+    const employeeFilter = String(req.query.employee || "all").trim();
+    const reviewedFilter = String(req.query.reviewed || "all").trim();
+    const snapshot = await get(
+      child(ref(database), `billElectricityTransactions/${date}`),
+    );
+
+    const rows = snapshot.exists()
+      ? Object.entries(snapshot.val()).map(([id, value]: [string, any]) => ({
+          id,
+          ...value,
+          reviewed: Boolean(value?.reviewed),
+        }))
+      : [];
+
+    const filteredRows = rows
+      .filter((row: any) =>
+        employeeFilter && employeeFilter !== "all"
+          ? row.employee === employeeFilter
+          : true,
+      )
+      .filter((row: any) =>
+        reviewedFilter && reviewedFilter !== "all"
+          ? row.reviewed === toReviewedBoolean(reviewedFilter)
+          : true,
+      )
+      .sort((a: any, b: any) => {
+        const aTime = new Date(a.createdAt || 0).getTime();
+        const bTime = new Date(b.createdAt || 0).getTime();
+
+        return bTime - aTime;
+      });
+
+    return res.status(200).json({
+      success: true,
+      date,
+      data: filteredRows,
+    });
+  } catch (error: any) {
+    console.error("Error fetching electricity transactions:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch electricity transactions.",
+      error: error.message,
+    });
+  }
+};
+
+export const updateElectricityTransactionReviewed = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    const date = String(req.body?.date || "").trim();
+    const reviewed = toReviewedBoolean(req.body?.reviewed);
+    const now = new Date().toISOString();
+
+    if (!id || !date) {
+      return res.status(400).json({
+        success: false,
+        message: "id and date are required.",
+      });
+    }
+
+    const transactionRef = ref(database, `billElectricityTransactions/${date}/${id}`);
+    const snapshot = await get(transactionRef);
+
+    if (!snapshot.exists()) {
+      return res.status(404).json({
+        success: false,
+        message: "Electricity transaction not found.",
+      });
+    }
+
+    await update(transactionRef, {
+      reviewed,
+      reviewedAt: now,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...snapshot.val(),
+        id,
+        reviewed,
+        reviewedAt: now,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error updating electricity transaction:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update electricity transaction.",
       error: error.message,
     });
   }

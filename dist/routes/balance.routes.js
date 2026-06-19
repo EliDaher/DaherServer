@@ -10,5 +10,7 @@ router.get("/getDailyBalance", balance_controller_1.getDailyBalance);
 router.get("/employeesDashboard", balance_controller_1.getEmployeesDashboard);
 router.post("/addBillInvoice", balance_controller_1.addBillInvoice);
 router.get("/getBillCategoryTotals", balance_controller_1.getBillCategoryTotals);
+router.get("/electricityTransactions", balance_controller_1.getElectricityTransactions);
+router.patch("/electricityTransactions/:id", balance_controller_1.updateElectricityTransactionReviewed);
 router.post("/addMofadale", balance_controller_1.addMofadale);
 exports.default = router;
