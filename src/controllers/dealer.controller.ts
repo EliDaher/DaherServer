@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+
 const {
   ref,
   push,
@@ -9,15 +10,19 @@ const {
 } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 
+function normalizeText(value: unknown) {
+  return String(value || "").trim();
+}
+
 export default async function addPayment(req: Request, res: Response) {
   try {
     const { amount, date, details, subscriberID, dealer } = req.body;
+    const paymentDealer = normalizeText(dealer);
 
-    if (!amount || !date || !details || !subscriberID || !dealer) {
+    if (!amount || !date || !details || !subscriberID || !paymentDealer) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // إنشاء معرف جديد باستخدام push
     const newDataRef = push(ref(database, "Payments"));
     const paymentID = newDataRef.key;
 
@@ -28,16 +33,12 @@ export default async function addPayment(req: Request, res: Response) {
       PaymentID: paymentID,
       SubscriberID: subscriberID,
       id: paymentID,
+      dealer: paymentDealer,
     };
 
-    // حفظ الدفعة تحت Payments
     await set(newDataRef, formData);
+    await set(ref(database, `dealerPayments/${paymentDealer}/${paymentID}`), formData);
 
-    // حفظ الدفعة تحت dealerPayments
-    const dealerRef = ref(database, `dealerPayments/${dealer}/${paymentID}`);
-    await set(dealerRef, formData);
-
-    // تحديث الرصيد باستخدام runTransaction
     const balanceRef = ref(database, `Subscribers/${subscriberID}/Balance`);
     let newTotal = 0;
     await runTransaction(balanceRef, (currentBalance: any) => {
@@ -57,28 +58,26 @@ export default async function addPayment(req: Request, res: Response) {
 export async function getPayments(req: Request, res: Response) {
   try {
     const dbRef = ref(database);
+    const dealerFilter = normalizeText(req.query.dealer).toLowerCase();
 
     const paymentsSnap = await get(child(dbRef, "Payments"));
     if (!paymentsSnap.exists()) {
-      return res
-        .status(404)
-        .json({ success: false, message: "❗ لا يوجد دفعات" });
+      return res.status(200).json({ success: true, Payments: {} });
     }
 
     const payments = paymentsSnap.val();
-
     const subscribersSnap = await get(child(dbRef, "Subscribers"));
     const subscribers = subscribersSnap.exists() ? subscribersSnap.val() : {};
-
-    const result: any = {};
+    const result: Record<string, unknown> = {};
 
     Object.entries(payments).forEach(([key, payment]: [string, any]) => {
       const subscriber = subscribers[payment.SubscriberID];
+      const paymentDealer = normalizeText(payment?.dealer || subscriber?.dealer);
 
-      // ✅ فقط المشتركين dealer = habeb
-      if (subscriber?.dealer === "habeb") {
+      if (!dealerFilter || paymentDealer.toLowerCase() === dealerFilter) {
         result[key] = {
           ...payment,
+          dealer: paymentDealer,
           subscriber,
         };
       }

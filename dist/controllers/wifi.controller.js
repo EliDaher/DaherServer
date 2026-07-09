@@ -324,6 +324,9 @@ const addPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
         // إنشاء payment ID عشوائي
         const newPaymentRef = push(ref(database, "Payments"));
         const paymentID = newPaymentRef.key;
+        const subscriberSnap = yield get(ref(database, `Subscribers/${subscriberID}`));
+        const subscriber = subscriberSnap.exists() ? subscriberSnap.val() : null;
+        const paymentDealer = String(dealer || (subscriber === null || subscriber === void 0 ? void 0 : subscriber.dealer) || "").trim();
         const formData = {
             Amount: amount,
             Date: date,
@@ -331,13 +334,14 @@ const addPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
             PaymentID: paymentID,
             SubscriberID: subscriberID,
             id: paymentID,
+            dealer: paymentDealer || null,
             type: type || 'cash',
         };
         // حفظ في Payments
         yield set(newPaymentRef, formData);
         // حفظ في dealerPayments إذا وُجد dealer
-        if (dealer) {
-            const dealerPaymentRef = ref(database, `dealerPayments/${dealer}/${paymentID}`);
+        if (paymentDealer) {
+            const dealerPaymentRef = ref(database, `dealerPayments/${paymentDealer}/${paymentID}`);
             yield set(dealerPaymentRef, formData);
         }
         // تحديث رصيد العميل

@@ -419,6 +419,9 @@ export const addPayment = async (req: Request, res: Response) => {
     // إنشاء payment ID عشوائي
     const newPaymentRef = push(ref(database, "Payments"));
     const paymentID = newPaymentRef.key;
+    const subscriberSnap = await get(ref(database, `Subscribers/${subscriberID}`));
+    const subscriber = subscriberSnap.exists() ? subscriberSnap.val() : null;
+    const paymentDealer = String(dealer || subscriber?.dealer || "").trim();
 
     const formData = {
       Amount: amount,
@@ -427,6 +430,7 @@ export const addPayment = async (req: Request, res: Response) => {
       PaymentID: paymentID,
       SubscriberID: subscriberID,
       id: paymentID,
+      dealer: paymentDealer || null,
       type: type || 'cash',
     };
 
@@ -434,10 +438,10 @@ export const addPayment = async (req: Request, res: Response) => {
     await set(newPaymentRef, formData);
 
     // حفظ في dealerPayments إذا وُجد dealer
-    if (dealer) { 
+    if (paymentDealer) {
       const dealerPaymentRef = ref(
         database,
-        `dealerPayments/${dealer}/${paymentID}`
+        `dealerPayments/${paymentDealer}/${paymentID}`
       );
       await set(dealerPaymentRef, formData);
     }

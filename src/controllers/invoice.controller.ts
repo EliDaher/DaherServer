@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { ref, get } from "firebase/database";
+
 const { database } = require("../../firebaseConfig.js");
 
 export const searchInvoices = async (req: Request, res: Response) => {
@@ -49,7 +50,7 @@ export const searchInvoices = async (req: Request, res: Response) => {
                 results.push({
                   date,
                   employee,
-                  invoiceData, // يحتوي كل التفاصيل بما فيها details وamount وtimestamp
+                  invoiceData,
                 });
               }
             });

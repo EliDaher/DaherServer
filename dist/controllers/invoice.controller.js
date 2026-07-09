@@ -47,7 +47,7 @@ const searchInvoices = (req, res) => __awaiter(void 0, void 0, void 0, function*
                                 results.push({
                                     date,
                                     employee,
-                                    invoiceData, // يحتوي كل التفاصيل بما فيها details وamount وtimestamp
+                                    invoiceData,
                                 });
                             }
                         });

@@ -13,14 +13,17 @@ exports.default = addPayment;
 exports.getPayments = getPayments;
 const { ref, push, set, runTransaction, get, child, } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
+function normalizeText(value) {
+    return String(value || "").trim();
+}
 function addPayment(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const { amount, date, details, subscriberID, dealer } = req.body;
-            if (!amount || !date || !details || !subscriberID || !dealer) {
+            const paymentDealer = normalizeText(dealer);
+            if (!amount || !date || !details || !subscriberID || !paymentDealer) {
                 return res.status(400).json({ error: "Missing required fields" });
             }
-            // إنشاء معرف جديد باستخدام push
             const newDataRef = push(ref(database, "Payments"));
             const paymentID = newDataRef.key;
             const formData = {
@@ -30,13 +33,10 @@ function addPayment(req, res) {
                 PaymentID: paymentID,
                 SubscriberID: subscriberID,
                 id: paymentID,
+                dealer: paymentDealer,
             };
-            // حفظ الدفعة تحت Payments
             yield set(newDataRef, formData);
-            // حفظ الدفعة تحت dealerPayments
-            const dealerRef = ref(database, `dealerPayments/${dealer}/${paymentID}`);
-            yield set(dealerRef, formData);
-            // تحديث الرصيد باستخدام runTransaction
+            yield set(ref(database, `dealerPayments/${paymentDealer}/${paymentID}`), formData);
             const balanceRef = ref(database, `Subscribers/${subscriberID}/Balance`);
             let newTotal = 0;
             yield runTransaction(balanceRef, (currentBalance) => {
@@ -57,11 +57,10 @@ function getPayments(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const dbRef = ref(database);
+            const dealerFilter = normalizeText(req.query.dealer).toLowerCase();
             const paymentsSnap = yield get(child(dbRef, "Payments"));
             if (!paymentsSnap.exists()) {
-                return res
-                    .status(404)
-                    .json({ success: false, message: "❗ لا يوجد دفعات" });
+                return res.status(200).json({ success: true, Payments: {} });
             }
             const payments = paymentsSnap.val();
             const subscribersSnap = yield get(child(dbRef, "Subscribers"));
@@ -69,9 +68,9 @@ function getPayments(req, res) {
             const result = {};
             Object.entries(payments).forEach(([key, payment]) => {
                 const subscriber = subscribers[payment.SubscriberID];
-                // ✅ فقط المشتركين dealer = habeb
-                if ((subscriber === null || subscriber === void 0 ? void 0 : subscriber.dealer) === "habeb") {
-                    result[key] = Object.assign(Object.assign({}, payment), { subscriber });
+                const paymentDealer = normalizeText((payment === null || payment === void 0 ? void 0 : payment.dealer) || (subscriber === null || subscriber === void 0 ? void 0 : subscriber.dealer));
+                if (!dealerFilter || paymentDealer.toLowerCase() === dealerFilter) {
+                    result[key] = Object.assign(Object.assign({}, payment), { dealer: paymentDealer, subscriber });
                 }
             });
             res.status(200).json({ success: true, Payments: result });
