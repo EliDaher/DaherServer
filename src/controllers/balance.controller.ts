@@ -16,6 +16,8 @@ type BillCategoryKey =
 
 type BillCategoryTotals = Record<BillCategoryKey, number>;
 
+type BillTransactionCategory = "elecTotal" | "phoneTotal";
+
 type BillInvoiceDetail = {
   category?: BillCategoryKey;
   customerDetails?: string;
@@ -33,6 +35,10 @@ const BILL_CATEGORY_LABELS: Record<BillCategoryKey, string> = {
 };
 
 const BILL_CATEGORY_KEYS = Object.keys(BILL_CATEGORY_LABELS) as BillCategoryKey[];
+const BILL_TRANSACTION_PATHS: Record<BillTransactionCategory, string> = {
+  elecTotal: "billElectricityTransactions",
+  phoneTotal: "billPhoneTransactions",
+};
 
 function toNumber(value: unknown) {
   const numericValue = Number(value);
@@ -64,6 +70,24 @@ function emptyCategoryTotals(): BillCategoryTotals {
 
 function isBillCategoryKey(value: unknown): value is BillCategoryKey {
   return BILL_CATEGORY_KEYS.includes(value as BillCategoryKey);
+}
+
+function isBillTransactionCategory(
+  value: unknown,
+): value is BillTransactionCategory {
+  return value === "elecTotal" || value === "phoneTotal";
+}
+
+function getBillTransactionCategory(value: unknown): BillTransactionCategory {
+  return isBillTransactionCategory(value) ? value : "elecTotal";
+}
+
+function getBillTransactionPath(category: BillTransactionCategory) {
+  return BILL_TRANSACTION_PATHS[category];
+}
+
+function getBillTransactionLabel(category: BillTransactionCategory) {
+  return category === "phoneTotal" ? "Phone" : "Electricity";
 }
 
 function normalizeInvoiceDetail(value: any): BillInvoiceDetail {
@@ -270,30 +294,37 @@ export const addBillInvoice = async (req: Request, res: Response) => {
 
     await set(invoiceRef, operation);
 
-    const electricityDetails = details.filter(
-      (detail) => detail.category === "elecTotal",
-    );
+    const transactionCategories: BillTransactionCategory[] = [
+      "elecTotal",
+      "phoneTotal",
+    ];
 
     await Promise.all(
-      electricityDetails.map((detail) => {
-        const electricityRef = push(ref(database, `billElectricityTransactions/${date}`));
-        const electricityTransaction = {
-          id: electricityRef.key,
-          invoiceId: invoiceRef.key,
-          employee,
-          date,
-          createdAt: now,
-          reviewed: false,
-          category: "elecTotal",
-          customerName: detail.customerName || "",
-          customerNumber: detail.customerNumber || "",
-          customerDetails: detail.customerDetails || "",
-          invoiceNumber: detail.invoiceNumber || "",
-          invoiceValue: toNumber(detail.invoiceValue),
-        };
+      transactionCategories.flatMap((category) =>
+        details
+          .filter((detail) => detail.category === category)
+          .map((detail) => {
+            const transactionRef = push(
+              ref(database, `${getBillTransactionPath(category)}/${date}`),
+            );
+            const transaction = {
+              id: transactionRef.key,
+              invoiceId: invoiceRef.key,
+              employee,
+              date,
+              createdAt: now,
+              reviewed: false,
+              category,
+              customerName: detail.customerName || "",
+              customerNumber: detail.customerNumber || "",
+              customerDetails: detail.customerDetails || "",
+              invoiceNumber: detail.invoiceNumber || "",
+              invoiceValue: toNumber(detail.invoiceValue),
+            };
 
-        return set(electricityRef, electricityTransaction);
-      }),
+            return set(transactionRef, transaction);
+          }),
+      ),
     );
 
     const summaryRef = ref(database, `billCategoryTotals/${date}/${employee}`);
@@ -421,8 +452,9 @@ export const getElectricityTransactions = async (req: Request, res: Response) =>
     );
     const employeeFilter = String(req.query.employee || "all").trim();
     const reviewedFilter = String(req.query.reviewed || "all").trim();
+    const category = getBillTransactionCategory(req.query.category);
     const snapshot = await get(
-      child(ref(database), `billElectricityTransactions/${date}`),
+      child(ref(database), `${getBillTransactionPath(category)}/${date}`),
     );
 
     const rows = snapshot.exists()
@@ -454,13 +486,14 @@ export const getElectricityTransactions = async (req: Request, res: Response) =>
     return res.status(200).json({
       success: true,
       date,
+      category,
       data: filteredRows,
     });
   } catch (error: any) {
-    console.error("Error fetching electricity transactions:", error);
+    console.error("Error fetching bill transactions:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch electricity transactions.",
+      message: "Failed to fetch bill transactions.",
       error: error.message,
     });
   }
@@ -474,6 +507,8 @@ export const updateElectricityTransactionReviewed = async (
     const id = String(req.params.id || "").trim();
     const date = String(req.body?.date || "").trim();
     const reviewed = toReviewedBoolean(req.body?.reviewed);
+    const category = getBillTransactionCategory(req.body?.category);
+    const transactionLabel = getBillTransactionLabel(category);
     const now = new Date().toISOString();
 
     if (!id || !date) {
@@ -483,13 +518,16 @@ export const updateElectricityTransactionReviewed = async (
       });
     }
 
-    const transactionRef = ref(database, `billElectricityTransactions/${date}/${id}`);
+    const transactionRef = ref(
+      database,
+      `${getBillTransactionPath(category)}/${date}/${id}`,
+    );
     const snapshot = await get(transactionRef);
 
     if (!snapshot.exists()) {
       return res.status(404).json({
         success: false,
-        message: "Electricity transaction not found.",
+        message: `${transactionLabel} transaction not found.`,
       });
     }
 
@@ -505,13 +543,14 @@ export const updateElectricityTransactionReviewed = async (
         id,
         reviewed,
         reviewedAt: now,
+        category,
       },
     });
   } catch (error: any) {
-    console.error("Error updating electricity transaction:", error);
+    console.error("Error updating bill transaction:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to update electricity transaction.",
+      message: "Failed to update bill transaction.",
       error: error.message,
     });
   }
