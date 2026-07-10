@@ -336,14 +336,26 @@ const getBillCategoryTotals = (req, res) => __awaiter(void 0, void 0, void 0, fu
 exports.getBillCategoryTotals = getBillCategoryTotals;
 const getElectricityTransactions = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const date = String(req.query.date || new Date().toISOString().split("T")[0]);
+        const requestedDate = String(req.query.date || "").trim();
+        const allDates = req.query.allDates === "true" ||
+            req.query.allDates === "1" ||
+            !requestedDate;
+        const date = requestedDate || new Date().toISOString().split("T")[0];
         const employeeFilter = String(req.query.employee || "all").trim();
         const reviewedFilter = String(req.query.reviewed || "all").trim();
         const category = getBillTransactionCategory(req.query.category);
-        const snapshot = yield get(child(ref(database), `${getBillTransactionPath(category)}/${date}`));
-        const rows = snapshot.exists()
-            ? Object.entries(snapshot.val()).map(([id, value]) => (Object.assign(Object.assign({ id }, value), { reviewed: Boolean(value === null || value === void 0 ? void 0 : value.reviewed) })))
-            : [];
+        const transactionPath = getBillTransactionPath(category);
+        const snapshot = yield get(child(ref(database), allDates ? transactionPath : `${transactionPath}/${date}`));
+        const rows = (() => {
+            if (!snapshot.exists()) {
+                return [];
+            }
+            const snapshotValue = snapshot.val();
+            if (!allDates) {
+                return Object.entries(snapshotValue).map(([id, value]) => (Object.assign(Object.assign({ id }, value), { date: (value === null || value === void 0 ? void 0 : value.date) || date, reviewed: Boolean(value === null || value === void 0 ? void 0 : value.reviewed) })));
+            }
+            return Object.entries(snapshotValue).flatMap(([transactionDate, transactionsByDate]) => Object.entries(transactionsByDate || {}).map(([id, value]) => (Object.assign(Object.assign({ id }, value), { date: (value === null || value === void 0 ? void 0 : value.date) || transactionDate, reviewed: Boolean(value === null || value === void 0 ? void 0 : value.reviewed) }))));
+        })();
         const filteredRows = rows
             .filter((row) => employeeFilter && employeeFilter !== "all"
             ? row.employee === employeeFilter
@@ -358,7 +370,8 @@ const getElectricityTransactions = (req, res) => __awaiter(void 0, void 0, void 
         });
         return res.status(200).json({
             success: true,
-            date,
+            date: allDates ? "all" : date,
+            allDates,
             category,
             data: filteredRows,
         });

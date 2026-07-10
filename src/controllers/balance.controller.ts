@@ -447,23 +447,48 @@ export const getBillCategoryTotals = async (req: Request, res: Response) => {
 
 export const getElectricityTransactions = async (req: Request, res: Response) => {
   try {
-    const date = String(
-      req.query.date || new Date().toISOString().split("T")[0],
-    );
+    const requestedDate = String(req.query.date || "").trim();
+    const allDates =
+      req.query.allDates === "true" ||
+      req.query.allDates === "1" ||
+      !requestedDate;
+    const date = requestedDate || new Date().toISOString().split("T")[0];
     const employeeFilter = String(req.query.employee || "all").trim();
     const reviewedFilter = String(req.query.reviewed || "all").trim();
     const category = getBillTransactionCategory(req.query.category);
+    const transactionPath = getBillTransactionPath(category);
     const snapshot = await get(
-      child(ref(database), `${getBillTransactionPath(category)}/${date}`),
+      child(ref(database), allDates ? transactionPath : `${transactionPath}/${date}`),
     );
 
-    const rows = snapshot.exists()
-      ? Object.entries(snapshot.val()).map(([id, value]: [string, any]) => ({
+    const rows = (() => {
+      if (!snapshot.exists()) {
+        return [];
+      }
+
+      const snapshotValue = snapshot.val();
+
+      if (!allDates) {
+        return Object.entries(snapshotValue).map(([id, value]: [string, any]) => ({
           id,
           ...value,
+          date: value?.date || date,
           reviewed: Boolean(value?.reviewed),
-        }))
-      : [];
+        }));
+      }
+
+      return Object.entries(snapshotValue).flatMap(
+        ([transactionDate, transactionsByDate]: [string, any]) =>
+          Object.entries(transactionsByDate || {}).map(
+            ([id, value]: [string, any]) => ({
+              id,
+              ...value,
+              date: value?.date || transactionDate,
+              reviewed: Boolean(value?.reviewed),
+            }),
+          ),
+      );
+    })();
 
     const filteredRows = rows
       .filter((row: any) =>
@@ -485,7 +510,8 @@ export const getElectricityTransactions = async (req: Request, res: Response) =>
 
     return res.status(200).json({
       success: true,
-      date,
+      date: allDates ? "all" : date,
+      allDates,
       category,
       data: filteredRows,
     });
