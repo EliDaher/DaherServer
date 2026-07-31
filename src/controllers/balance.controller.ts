@@ -12,7 +12,8 @@ type BillCategoryKey =
   | "internetTotal"
   | "elecTotal"
   | "waterTotal"
-  | "phoneTotal";
+  | "phoneTotal"
+  | "otherTotal";
 
 type BillCategoryTotals = Record<BillCategoryKey, number>;
 
@@ -32,6 +33,7 @@ const BILL_CATEGORY_LABELS: Record<BillCategoryKey, string> = {
   elecTotal: "كهرباء",
   waterTotal: "مياه",
   phoneTotal: "أرضي",
+  otherTotal: "أخرى",
 };
 
 const BILL_CATEGORY_KEYS = Object.keys(BILL_CATEGORY_LABELS) as BillCategoryKey[];
@@ -52,6 +54,7 @@ function normalizeCategoryTotals(value: any): BillCategoryTotals {
     elecTotal: toNumber(value?.elecTotal),
     waterTotal: toNumber(value?.waterTotal),
     phoneTotal: toNumber(value?.phoneTotal),
+    otherTotal: toNumber(value?.otherTotal),
   };
 }
 
@@ -65,6 +68,7 @@ function emptyCategoryTotals(): BillCategoryTotals {
     elecTotal: 0,
     waterTotal: 0,
     phoneTotal: 0,
+    otherTotal: 0,
   };
 }
 
@@ -407,6 +411,7 @@ export const getBillCategoryTotals = async (req: Request, res: Response) => {
       elecTotal: categoryFilter === "all" || categoryFilter === "elecTotal" ? row.elecTotal : 0,
       waterTotal: categoryFilter === "all" || categoryFilter === "waterTotal" ? row.waterTotal : 0,
       phoneTotal: categoryFilter === "all" || categoryFilter === "phoneTotal" ? row.phoneTotal : 0,
+      otherTotal: categoryFilter === "all" || categoryFilter === "otherTotal" ? row.otherTotal : 0,
       total:
         categoryFilter === "all"
           ? row.total

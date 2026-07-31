@@ -17,6 +17,7 @@ const BILL_CATEGORY_LABELS = {
     elecTotal: "كهرباء",
     waterTotal: "مياه",
     phoneTotal: "أرضي",
+    otherTotal: "أخرى",
 };
 const BILL_CATEGORY_KEYS = Object.keys(BILL_CATEGORY_LABELS);
 const BILL_TRANSACTION_PATHS = {
@@ -33,6 +34,7 @@ function normalizeCategoryTotals(value) {
         elecTotal: toNumber(value === null || value === void 0 ? void 0 : value.elecTotal),
         waterTotal: toNumber(value === null || value === void 0 ? void 0 : value.waterTotal),
         phoneTotal: toNumber(value === null || value === void 0 ? void 0 : value.phoneTotal),
+        otherTotal: toNumber(value === null || value === void 0 ? void 0 : value.otherTotal),
     };
 }
 function sumCategoryTotals(totals) {
@@ -44,6 +46,7 @@ function emptyCategoryTotals() {
         elecTotal: 0,
         waterTotal: 0,
         phoneTotal: 0,
+        otherTotal: 0,
     };
 }
 function isBillCategoryKey(value) {
@@ -305,6 +308,7 @@ const getBillCategoryTotals = (req, res) => __awaiter(void 0, void 0, void 0, fu
             elecTotal: categoryFilter === "all" || categoryFilter === "elecTotal" ? row.elecTotal : 0,
             waterTotal: categoryFilter === "all" || categoryFilter === "waterTotal" ? row.waterTotal : 0,
             phoneTotal: categoryFilter === "all" || categoryFilter === "phoneTotal" ? row.phoneTotal : 0,
+            otherTotal: categoryFilter === "all" || categoryFilter === "otherTotal" ? row.otherTotal : 0,
             total: categoryFilter === "all"
                 ? row.total
                 : toNumber(row[categoryFilter]),
