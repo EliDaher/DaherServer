@@ -13,6 +13,7 @@ import posLimitsRoutes from "./posLimits.routes";
 import profitLogsRoutes from "./profitLogs.routes";
 import storeRoutes from "./store.routes";
 import reportedTransactionsRoutes from "./reportedTransactions.routes";
+import mikrotikRoutes from "./mikrotik.routes";
 
 const router = Router();
 
@@ -43,5 +44,7 @@ router.use("/profit-logs", profitLogsRoutes);
 router.use("/store", storeRoutes);
 
 router.use("/reported-transactions", reportedTransactionsRoutes);
+
+router.use("/mikrotik", mikrotikRoutes);
 
 export default router;
