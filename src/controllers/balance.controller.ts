@@ -17,7 +17,7 @@ type BillCategoryKey =
 
 type BillCategoryTotals = Record<BillCategoryKey, number>;
 
-type BillTransactionCategory = "elecTotal" | "phoneTotal";
+type BillTransactionCategory = "elecTotal" | "phoneTotal" | "waterTotal";
 
 type BillInvoiceDetail = {
   category?: BillCategoryKey;
@@ -40,6 +40,7 @@ const BILL_CATEGORY_KEYS = Object.keys(BILL_CATEGORY_LABELS) as BillCategoryKey[
 const BILL_TRANSACTION_PATHS: Record<BillTransactionCategory, string> = {
   elecTotal: "billElectricityTransactions",
   phoneTotal: "billPhoneTransactions",
+  waterTotal: "billWaterTransactions",
 };
 
 function toNumber(value: unknown) {
@@ -79,7 +80,11 @@ function isBillCategoryKey(value: unknown): value is BillCategoryKey {
 function isBillTransactionCategory(
   value: unknown,
 ): value is BillTransactionCategory {
-  return value === "elecTotal" || value === "phoneTotal";
+  return (
+    value === "elecTotal" ||
+    value === "phoneTotal" ||
+    value === "waterTotal"
+  );
 }
 
 function getBillTransactionCategory(value: unknown): BillTransactionCategory {
@@ -91,7 +96,11 @@ function getBillTransactionPath(category: BillTransactionCategory) {
 }
 
 function getBillTransactionLabel(category: BillTransactionCategory) {
-  return category === "phoneTotal" ? "Phone" : "Electricity";
+  if (category === "phoneTotal") {
+    return "Phone";
+  }
+
+  return category === "waterTotal" ? "Water" : "Electricity";
 }
 
 function normalizeInvoiceDetail(value: any): BillInvoiceDetail {
@@ -301,6 +310,7 @@ export const addBillInvoice = async (req: Request, res: Response) => {
     const transactionCategories: BillTransactionCategory[] = [
       "elecTotal",
       "phoneTotal",
+      "waterTotal",
     ];
 
     await Promise.all(
@@ -450,7 +460,11 @@ export const getBillCategoryTotals = async (req: Request, res: Response) => {
   }
 };
 
-export const getElectricityTransactions = async (req: Request, res: Response) => {
+async function getBillTransactions(
+  req: Request,
+  res: Response,
+  forcedCategory?: BillTransactionCategory,
+) {
   try {
     const requestedDate = String(req.query.date || "").trim();
     const allDates =
@@ -460,7 +474,7 @@ export const getElectricityTransactions = async (req: Request, res: Response) =>
     const date = requestedDate || new Date().toISOString().split("T")[0];
     const employeeFilter = String(req.query.employee || "all").trim();
     const reviewedFilter = String(req.query.reviewed || "all").trim();
-    const category = getBillTransactionCategory(req.query.category);
+    const category = forcedCategory || getBillTransactionCategory(req.query.category);
     const transactionPath = getBillTransactionPath(category);
     const snapshot = await get(
       child(ref(database), allDates ? transactionPath : `${transactionPath}/${date}`),
@@ -528,17 +542,24 @@ export const getElectricityTransactions = async (req: Request, res: Response) =>
       error: error.message,
     });
   }
-};
+}
 
-export const updateElectricityTransactionReviewed = async (
+export const getElectricityTransactions = (req: Request, res: Response) =>
+  getBillTransactions(req, res);
+
+export const getWaterTransactions = (req: Request, res: Response) =>
+  getBillTransactions(req, res, "waterTotal");
+
+async function updateBillTransactionReviewed(
   req: Request,
   res: Response,
-) => {
+  forcedCategory?: BillTransactionCategory,
+) {
   try {
     const id = String(req.params.id || "").trim();
     const date = String(req.body?.date || "").trim();
     const reviewed = toReviewedBoolean(req.body?.reviewed);
-    const category = getBillTransactionCategory(req.body?.category);
+    const category = forcedCategory || getBillTransactionCategory(req.body?.category);
     const transactionLabel = getBillTransactionLabel(category);
     const now = new Date().toISOString();
 
@@ -585,7 +606,15 @@ export const updateElectricityTransactionReviewed = async (
       error: error.message,
     });
   }
-};
+}
+
+export const updateElectricityTransactionReviewed = (
+  req: Request,
+  res: Response,
+) => updateBillTransactionReviewed(req, res);
+
+export const updateWaterTransactionReviewed = (req: Request, res: Response) =>
+  updateBillTransactionReviewed(req, res, "waterTotal");
 
 export const addMofadale = async (req: Request, res: Response) => {
   try {

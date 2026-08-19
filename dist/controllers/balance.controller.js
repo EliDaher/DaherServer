@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getEmployeesDashboard = exports.addMofadale = exports.updateElectricityTransactionReviewed = exports.getElectricityTransactions = exports.getBillCategoryTotals = exports.addBillInvoice = exports.getDailyBalance = exports.getEmployeeBalanceTable = exports.getTotalBalance = exports.getTotalDayBalance = void 0;
+exports.getEmployeesDashboard = exports.addMofadale = exports.updateWaterTransactionReviewed = exports.updateElectricityTransactionReviewed = exports.getWaterTransactions = exports.getElectricityTransactions = exports.getBillCategoryTotals = exports.addBillInvoice = exports.getDailyBalance = exports.getEmployeeBalanceTable = exports.getTotalBalance = exports.getTotalDayBalance = void 0;
 const { ref, get, child, push, set, update, runTransaction } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 const BILL_CATEGORY_LABELS = {
@@ -23,6 +23,7 @@ const BILL_CATEGORY_KEYS = Object.keys(BILL_CATEGORY_LABELS);
 const BILL_TRANSACTION_PATHS = {
     elecTotal: "billElectricityTransactions",
     phoneTotal: "billPhoneTransactions",
+    waterTotal: "billWaterTransactions",
 };
 function toNumber(value) {
     const numericValue = Number(value);
@@ -53,7 +54,9 @@ function isBillCategoryKey(value) {
     return BILL_CATEGORY_KEYS.includes(value);
 }
 function isBillTransactionCategory(value) {
-    return value === "elecTotal" || value === "phoneTotal";
+    return (value === "elecTotal" ||
+        value === "phoneTotal" ||
+        value === "waterTotal");
 }
 function getBillTransactionCategory(value) {
     return isBillTransactionCategory(value) ? value : "elecTotal";
@@ -62,7 +65,10 @@ function getBillTransactionPath(category) {
     return BILL_TRANSACTION_PATHS[category];
 }
 function getBillTransactionLabel(category) {
-    return category === "phoneTotal" ? "Phone" : "Electricity";
+    if (category === "phoneTotal") {
+        return "Phone";
+    }
+    return category === "waterTotal" ? "Water" : "Electricity";
 }
 function normalizeInvoiceDetail(value) {
     const category = isBillCategoryKey(value === null || value === void 0 ? void 0 : value.category) ? value.category : undefined;
@@ -239,6 +245,7 @@ const addBillInvoice = (req, res) => __awaiter(void 0, void 0, void 0, function*
         const transactionCategories = [
             "elecTotal",
             "phoneTotal",
+            "waterTotal",
         ];
         yield Promise.all(transactionCategories.flatMap((category) => details
             .filter((detail) => detail.category === category)
@@ -338,101 +345,111 @@ const getBillCategoryTotals = (req, res) => __awaiter(void 0, void 0, void 0, fu
     }
 });
 exports.getBillCategoryTotals = getBillCategoryTotals;
-const getElectricityTransactions = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const requestedDate = String(req.query.date || "").trim();
-        const allDates = req.query.allDates === "true" ||
-            req.query.allDates === "1" ||
-            !requestedDate;
-        const date = requestedDate || new Date().toISOString().split("T")[0];
-        const employeeFilter = String(req.query.employee || "all").trim();
-        const reviewedFilter = String(req.query.reviewed || "all").trim();
-        const category = getBillTransactionCategory(req.query.category);
-        const transactionPath = getBillTransactionPath(category);
-        const snapshot = yield get(child(ref(database), allDates ? transactionPath : `${transactionPath}/${date}`));
-        const rows = (() => {
-            if (!snapshot.exists()) {
-                return [];
-            }
-            const snapshotValue = snapshot.val();
-            if (!allDates) {
-                return Object.entries(snapshotValue).map(([id, value]) => (Object.assign(Object.assign({ id }, value), { date: (value === null || value === void 0 ? void 0 : value.date) || date, reviewed: Boolean(value === null || value === void 0 ? void 0 : value.reviewed) })));
-            }
-            return Object.entries(snapshotValue).flatMap(([transactionDate, transactionsByDate]) => Object.entries(transactionsByDate || {}).map(([id, value]) => (Object.assign(Object.assign({ id }, value), { date: (value === null || value === void 0 ? void 0 : value.date) || transactionDate, reviewed: Boolean(value === null || value === void 0 ? void 0 : value.reviewed) }))));
-        })();
-        const filteredRows = rows
-            .filter((row) => employeeFilter && employeeFilter !== "all"
-            ? row.employee === employeeFilter
-            : true)
-            .filter((row) => reviewedFilter && reviewedFilter !== "all"
-            ? row.reviewed === toReviewedBoolean(reviewedFilter)
-            : true)
-            .sort((a, b) => {
-            const aTime = new Date(a.createdAt || 0).getTime();
-            const bTime = new Date(b.createdAt || 0).getTime();
-            return bTime - aTime;
-        });
-        return res.status(200).json({
-            success: true,
-            date: allDates ? "all" : date,
-            allDates,
-            category,
-            data: filteredRows,
-        });
-    }
-    catch (error) {
-        console.error("Error fetching bill transactions:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to fetch bill transactions.",
-            error: error.message,
-        });
-    }
-});
+function getBillTransactions(req, res, forcedCategory) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const requestedDate = String(req.query.date || "").trim();
+            const allDates = req.query.allDates === "true" ||
+                req.query.allDates === "1" ||
+                !requestedDate;
+            const date = requestedDate || new Date().toISOString().split("T")[0];
+            const employeeFilter = String(req.query.employee || "all").trim();
+            const reviewedFilter = String(req.query.reviewed || "all").trim();
+            const category = forcedCategory || getBillTransactionCategory(req.query.category);
+            const transactionPath = getBillTransactionPath(category);
+            const snapshot = yield get(child(ref(database), allDates ? transactionPath : `${transactionPath}/${date}`));
+            const rows = (() => {
+                if (!snapshot.exists()) {
+                    return [];
+                }
+                const snapshotValue = snapshot.val();
+                if (!allDates) {
+                    return Object.entries(snapshotValue).map(([id, value]) => (Object.assign(Object.assign({ id }, value), { date: (value === null || value === void 0 ? void 0 : value.date) || date, reviewed: Boolean(value === null || value === void 0 ? void 0 : value.reviewed) })));
+                }
+                return Object.entries(snapshotValue).flatMap(([transactionDate, transactionsByDate]) => Object.entries(transactionsByDate || {}).map(([id, value]) => (Object.assign(Object.assign({ id }, value), { date: (value === null || value === void 0 ? void 0 : value.date) || transactionDate, reviewed: Boolean(value === null || value === void 0 ? void 0 : value.reviewed) }))));
+            })();
+            const filteredRows = rows
+                .filter((row) => employeeFilter && employeeFilter !== "all"
+                ? row.employee === employeeFilter
+                : true)
+                .filter((row) => reviewedFilter && reviewedFilter !== "all"
+                ? row.reviewed === toReviewedBoolean(reviewedFilter)
+                : true)
+                .sort((a, b) => {
+                const aTime = new Date(a.createdAt || 0).getTime();
+                const bTime = new Date(b.createdAt || 0).getTime();
+                return bTime - aTime;
+            });
+            return res.status(200).json({
+                success: true,
+                date: allDates ? "all" : date,
+                allDates,
+                category,
+                data: filteredRows,
+            });
+        }
+        catch (error) {
+            console.error("Error fetching bill transactions:", error);
+            return res.status(500).json({
+                success: false,
+                message: "Failed to fetch bill transactions.",
+                error: error.message,
+            });
+        }
+    });
+}
+const getElectricityTransactions = (req, res) => getBillTransactions(req, res);
 exports.getElectricityTransactions = getElectricityTransactions;
-const updateElectricityTransactionReviewed = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c;
-    try {
-        const id = String(req.params.id || "").trim();
-        const date = String(((_a = req.body) === null || _a === void 0 ? void 0 : _a.date) || "").trim();
-        const reviewed = toReviewedBoolean((_b = req.body) === null || _b === void 0 ? void 0 : _b.reviewed);
-        const category = getBillTransactionCategory((_c = req.body) === null || _c === void 0 ? void 0 : _c.category);
-        const transactionLabel = getBillTransactionLabel(category);
-        const now = new Date().toISOString();
-        if (!id || !date) {
-            return res.status(400).json({
-                success: false,
-                message: "id and date are required.",
+const getWaterTransactions = (req, res) => getBillTransactions(req, res, "waterTotal");
+exports.getWaterTransactions = getWaterTransactions;
+function updateBillTransactionReviewed(req, res, forcedCategory) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a, _b, _c;
+        try {
+            const id = String(req.params.id || "").trim();
+            const date = String(((_a = req.body) === null || _a === void 0 ? void 0 : _a.date) || "").trim();
+            const reviewed = toReviewedBoolean((_b = req.body) === null || _b === void 0 ? void 0 : _b.reviewed);
+            const category = forcedCategory || getBillTransactionCategory((_c = req.body) === null || _c === void 0 ? void 0 : _c.category);
+            const transactionLabel = getBillTransactionLabel(category);
+            const now = new Date().toISOString();
+            if (!id || !date) {
+                return res.status(400).json({
+                    success: false,
+                    message: "id and date are required.",
+                });
+            }
+            const transactionRef = ref(database, `${getBillTransactionPath(category)}/${date}/${id}`);
+            const snapshot = yield get(transactionRef);
+            if (!snapshot.exists()) {
+                return res.status(404).json({
+                    success: false,
+                    message: `${transactionLabel} transaction not found.`,
+                });
+            }
+            yield update(transactionRef, {
+                reviewed,
+                reviewedAt: now,
+            });
+            return res.status(200).json({
+                success: true,
+                data: Object.assign(Object.assign({}, snapshot.val()), { id,
+                    reviewed, reviewedAt: now, category }),
             });
         }
-        const transactionRef = ref(database, `${getBillTransactionPath(category)}/${date}/${id}`);
-        const snapshot = yield get(transactionRef);
-        if (!snapshot.exists()) {
-            return res.status(404).json({
+        catch (error) {
+            console.error("Error updating bill transaction:", error);
+            return res.status(500).json({
                 success: false,
-                message: `${transactionLabel} transaction not found.`,
+                message: "Failed to update bill transaction.",
+                error: error.message,
             });
         }
-        yield update(transactionRef, {
-            reviewed,
-            reviewedAt: now,
-        });
-        return res.status(200).json({
-            success: true,
-            data: Object.assign(Object.assign({}, snapshot.val()), { id,
-                reviewed, reviewedAt: now, category }),
-        });
-    }
-    catch (error) {
-        console.error("Error updating bill transaction:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to update bill transaction.",
-            error: error.message,
-        });
-    }
-});
+    });
+}
+const updateElectricityTransactionReviewed = (req, res) => updateBillTransactionReviewed(req, res);
 exports.updateElectricityTransactionReviewed = updateElectricityTransactionReviewed;
+const updateWaterTransactionReviewed = (req, res) => updateBillTransactionReviewed(req, res, "waterTotal");
+exports.updateWaterTransactionReviewed = updateWaterTransactionReviewed;
 const addMofadale = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const subscribersRef = ref(database, "mofadale");

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getTotalDayBalance, getTotalBalance, getEmployeeBalanceTable, getDailyBalance, addMofadale, getEmployeesDashboard, addBillInvoice, getBillCategoryTotals, getElectricityTransactions, updateElectricityTransactionReviewed } from "../controllers/balance.controller";
+import { getTotalDayBalance, getTotalBalance, getEmployeeBalanceTable, getDailyBalance, addMofadale, getEmployeesDashboard, addBillInvoice, getBillCategoryTotals, getElectricityTransactions, updateElectricityTransactionReviewed, getWaterTransactions, updateWaterTransactionReviewed } from "../controllers/balance.controller";
 
 const router = Router();
 
@@ -20,6 +20,10 @@ router.get("/getBillCategoryTotals", getBillCategoryTotals);
 router.get("/electricityTransactions", getElectricityTransactions);
 
 router.patch("/electricityTransactions/:id", updateElectricityTransactionReviewed);
+
+router.get("/waterTransactions", getWaterTransactions);
+
+router.patch("/waterTransactions/:id", updateWaterTransactionReviewed);
 
 router.post("/addMofadale", addMofadale);
 
