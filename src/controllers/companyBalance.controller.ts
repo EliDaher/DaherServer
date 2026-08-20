@@ -217,6 +217,7 @@ export const getLogsByDate = async (req: Request, res: Response) => {
 };
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+const DATE_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 function toFiniteNumber(value: unknown) {
   const numeric = Number(value);
@@ -246,6 +247,186 @@ function buildMonthDays(month: string) {
 
   return { dailyUsage, daysInMonth };
 }
+
+function formatDateKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function parseDateKey(dateKey: string) {
+  if (!DATE_PATTERN.test(dateKey)) return null;
+
+  const [yearRaw, monthRaw, dayRaw] = dateKey.split("-");
+  const year = Number(yearRaw);
+  const monthIndex = Number(monthRaw) - 1;
+  const day = Number(dayRaw);
+  const parsed = new Date(Date.UTC(year, monthIndex, day));
+
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== monthIndex ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function shiftDateKey(dateKey: string, days: number) {
+  const parsed = parseDateKey(dateKey);
+  if (!parsed) return "";
+
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return formatDateKey(parsed);
+}
+
+function getHistoricalDateKey(targetDateKey: string, monthsBack: number) {
+  const parsed = parseDateKey(targetDateKey);
+  if (!parsed) return null;
+
+  const year = parsed.getUTCFullYear();
+  const monthIndex = parsed.getUTCMonth();
+  const day = parsed.getUTCDate();
+  const historicalMonthIndex = monthIndex - monthsBack;
+  const daysInHistoricalMonth = new Date(
+    Date.UTC(year, historicalMonthIndex + 1, 0),
+  ).getUTCDate();
+
+  if (day > daysInHistoricalMonth) return null;
+
+  return formatDateKey(new Date(Date.UTC(year, historicalMonthIndex, day)));
+}
+
+function getCompanyDailyDecreaseAmount(
+  logsByDate: Record<string, any>,
+  dateKey: string,
+  companyId: string,
+) {
+  const dayLogs = logsByDate[dateKey] || {};
+
+  return Object.keys(dayLogs).reduce((sum, logId) => {
+    const log = dayLogs[logId] || {};
+    if (String(log.companyId || "") !== companyId) return sum;
+    if (String(log.type || "") !== "decrease") return sum;
+
+    return sum + toFiniteNumber(log.amount);
+  }, 0);
+}
+
+function getExpectedAmountForTarget(
+  logsByDate: Record<string, any>,
+  companyId: string,
+  targetDateKey: string,
+  historyMonths: number,
+) {
+  let total = 0;
+  let validDays = 0;
+
+  for (let monthsBack = 1; monthsBack <= historyMonths; monthsBack += 1) {
+    const historicalDateKey = getHistoricalDateKey(targetDateKey, monthsBack);
+    if (!historicalDateKey) continue;
+
+    validDays += 1;
+    total += getCompanyDailyDecreaseAmount(
+      logsByDate,
+      historicalDateKey,
+      companyId,
+    );
+  }
+
+  return validDays > 0 ? total / validDays : 0;
+}
+
+export const getExpectedUsage = async (req: Request, res: Response) => {
+  try {
+    const queryBaseDate = req.query.baseDate;
+    const queryHistoryMonths = req.query.historyMonths;
+    const baseDate =
+      typeof queryBaseDate === "string" && queryBaseDate.trim() !== ""
+        ? queryBaseDate.trim()
+        : formatDateKey(new Date());
+    const historyMonths =
+      typeof queryHistoryMonths === "string" && queryHistoryMonths.trim() !== ""
+        ? Number(queryHistoryMonths)
+        : 3;
+
+    if (!parseDateKey(baseDate)) {
+      return res
+        .status(400)
+        .json({ error: "Invalid baseDate format. Expected YYYY-MM-DD" });
+    }
+
+    if (!Number.isInteger(historyMonths) || historyMonths < 1) {
+      return res.status(400).json({
+        error: "Invalid historyMonths. Expected a positive integer",
+      });
+    }
+
+    const [companiesSnap, logsSnap] = await Promise.all([
+      get(ref(database, "companies")),
+      get(ref(database, "balanceLogs")),
+    ]);
+
+    const companies = companiesSnap.exists() ? companiesSnap.val() : {};
+    const logsByDate = logsSnap.exists() ? logsSnap.val() : {};
+    const targets = [
+      { key: "today", label: "اليوم", date: baseDate },
+      { key: "tomorrow", label: "غدا", date: shiftDateKey(baseDate, 1) },
+      {
+        key: "dayAfterTomorrow",
+        label: "بعد غد",
+        date: shiftDateKey(baseDate, 2),
+      },
+    ];
+
+    const rows = Object.entries(companies).map(([companyKey, value]) => {
+      const company = value as Record<string, any>;
+      const companyId = String(company.id || companyKey);
+      const expectedToday = getExpectedAmountForTarget(
+        logsByDate,
+        companyId,
+        targets[0].date,
+        historyMonths,
+      );
+      const expectedTomorrow = getExpectedAmountForTarget(
+        logsByDate,
+        companyId,
+        targets[1].date,
+        historyMonths,
+      );
+      const expectedDayAfterTomorrow = getExpectedAmountForTarget(
+        logsByDate,
+        companyId,
+        targets[2].date,
+        historyMonths,
+      );
+
+      return {
+        companyId,
+        name: String(company.name || "-"),
+        currentBalance: toFiniteNumber(company.balance),
+        expectedToday,
+        expectedTomorrow,
+        expectedDayAfterTomorrow,
+        totalExpectedUsage:
+          expectedToday + expectedTomorrow + expectedDayAfterTomorrow,
+      };
+    });
+
+    return res.status(200).json({
+      generatedAt: new Date().toISOString(),
+      baseDate,
+      historyMonths,
+      targets,
+      rows,
+    });
+  } catch (error) {
+    console.error("Error fetching expected company usage:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch expected company usage" });
+  }
+};
 
 export const getCompanyDetails = async (req: Request, res: Response) => {
   try {

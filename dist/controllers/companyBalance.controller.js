@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.fixBalance = exports.getCompanyDetails = exports.getLogsByDate = exports.getAllCompaniesBalances = exports.increaseBalance = exports.decreaseBalance = exports.createCompany = void 0;
+exports.fixBalance = exports.getCompanyDetails = exports.getExpectedUsage = exports.getLogsByDate = exports.getAllCompaniesBalances = exports.increaseBalance = exports.decreaseBalance = exports.createCompany = void 0;
 const ports_controller_1 = require("./ports.controller");
 const companies_service_1 = require("../services/companies.service");
 const balance_service_1 = require("../services/balance.service");
@@ -194,6 +194,7 @@ const getLogsByDate = (req, res) => __awaiter(void 0, void 0, void 0, function* 
 });
 exports.getLogsByDate = getLogsByDate;
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+const DATE_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 function toFiniteNumber(value) {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : 0;
@@ -219,6 +220,134 @@ function buildMonthDays(month) {
     }
     return { dailyUsage, daysInMonth };
 }
+function formatDateKey(date) {
+    return date.toISOString().slice(0, 10);
+}
+function parseDateKey(dateKey) {
+    if (!DATE_PATTERN.test(dateKey))
+        return null;
+    const [yearRaw, monthRaw, dayRaw] = dateKey.split("-");
+    const year = Number(yearRaw);
+    const monthIndex = Number(monthRaw) - 1;
+    const day = Number(dayRaw);
+    const parsed = new Date(Date.UTC(year, monthIndex, day));
+    if (parsed.getUTCFullYear() !== year ||
+        parsed.getUTCMonth() !== monthIndex ||
+        parsed.getUTCDate() !== day) {
+        return null;
+    }
+    return parsed;
+}
+function shiftDateKey(dateKey, days) {
+    const parsed = parseDateKey(dateKey);
+    if (!parsed)
+        return "";
+    parsed.setUTCDate(parsed.getUTCDate() + days);
+    return formatDateKey(parsed);
+}
+function getHistoricalDateKey(targetDateKey, monthsBack) {
+    const parsed = parseDateKey(targetDateKey);
+    if (!parsed)
+        return null;
+    const year = parsed.getUTCFullYear();
+    const monthIndex = parsed.getUTCMonth();
+    const day = parsed.getUTCDate();
+    const historicalMonthIndex = monthIndex - monthsBack;
+    const daysInHistoricalMonth = new Date(Date.UTC(year, historicalMonthIndex + 1, 0)).getUTCDate();
+    if (day > daysInHistoricalMonth)
+        return null;
+    return formatDateKey(new Date(Date.UTC(year, historicalMonthIndex, day)));
+}
+function getCompanyDailyDecreaseAmount(logsByDate, dateKey, companyId) {
+    const dayLogs = logsByDate[dateKey] || {};
+    return Object.keys(dayLogs).reduce((sum, logId) => {
+        const log = dayLogs[logId] || {};
+        if (String(log.companyId || "") !== companyId)
+            return sum;
+        if (String(log.type || "") !== "decrease")
+            return sum;
+        return sum + toFiniteNumber(log.amount);
+    }, 0);
+}
+function getExpectedAmountForTarget(logsByDate, companyId, targetDateKey, historyMonths) {
+    let total = 0;
+    let validDays = 0;
+    for (let monthsBack = 1; monthsBack <= historyMonths; monthsBack += 1) {
+        const historicalDateKey = getHistoricalDateKey(targetDateKey, monthsBack);
+        if (!historicalDateKey)
+            continue;
+        validDays += 1;
+        total += getCompanyDailyDecreaseAmount(logsByDate, historicalDateKey, companyId);
+    }
+    return validDays > 0 ? total / validDays : 0;
+}
+const getExpectedUsage = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const queryBaseDate = req.query.baseDate;
+        const queryHistoryMonths = req.query.historyMonths;
+        const baseDate = typeof queryBaseDate === "string" && queryBaseDate.trim() !== ""
+            ? queryBaseDate.trim()
+            : formatDateKey(new Date());
+        const historyMonths = typeof queryHistoryMonths === "string" && queryHistoryMonths.trim() !== ""
+            ? Number(queryHistoryMonths)
+            : 3;
+        if (!parseDateKey(baseDate)) {
+            return res
+                .status(400)
+                .json({ error: "Invalid baseDate format. Expected YYYY-MM-DD" });
+        }
+        if (!Number.isInteger(historyMonths) || historyMonths < 1) {
+            return res.status(400).json({
+                error: "Invalid historyMonths. Expected a positive integer",
+            });
+        }
+        const [companiesSnap, logsSnap] = yield Promise.all([
+            get(ref(database, "companies")),
+            get(ref(database, "balanceLogs")),
+        ]);
+        const companies = companiesSnap.exists() ? companiesSnap.val() : {};
+        const logsByDate = logsSnap.exists() ? logsSnap.val() : {};
+        const targets = [
+            { key: "today", label: "اليوم", date: baseDate },
+            { key: "tomorrow", label: "غدا", date: shiftDateKey(baseDate, 1) },
+            {
+                key: "dayAfterTomorrow",
+                label: "بعد غد",
+                date: shiftDateKey(baseDate, 2),
+            },
+        ];
+        const rows = Object.entries(companies).map(([companyKey, value]) => {
+            const company = value;
+            const companyId = String(company.id || companyKey);
+            const expectedToday = getExpectedAmountForTarget(logsByDate, companyId, targets[0].date, historyMonths);
+            const expectedTomorrow = getExpectedAmountForTarget(logsByDate, companyId, targets[1].date, historyMonths);
+            const expectedDayAfterTomorrow = getExpectedAmountForTarget(logsByDate, companyId, targets[2].date, historyMonths);
+            return {
+                companyId,
+                name: String(company.name || "-"),
+                currentBalance: toFiniteNumber(company.balance),
+                expectedToday,
+                expectedTomorrow,
+                expectedDayAfterTomorrow,
+                totalExpectedUsage: expectedToday + expectedTomorrow + expectedDayAfterTomorrow,
+            };
+        });
+        return res.status(200).json({
+            generatedAt: new Date().toISOString(),
+            baseDate,
+            historyMonths,
+            targets,
+            rows,
+        });
+    }
+    catch (error) {
+        console.error("Error fetching expected company usage:", error);
+        return res
+            .status(500)
+            .json({ error: "Failed to fetch expected company usage" });
+    }
+});
+exports.getExpectedUsage = getExpectedUsage;
 const getCompanyDetails = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { companyId } = req.params;

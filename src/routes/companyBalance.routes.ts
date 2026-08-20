@@ -1,5 +1,14 @@
 import { Router } from "express";
-import { createCompany, decreaseBalance, fixBalance, getAllCompaniesBalances, getCompanyDetails, getLogsByDate, increaseBalance } from "../controllers/companyBalance.controller";
+import {
+  createCompany,
+  decreaseBalance,
+  fixBalance,
+  getAllCompaniesBalances,
+  getCompanyDetails,
+  getExpectedUsage,
+  getLogsByDate,
+  increaseBalance,
+} from "../controllers/companyBalance.controller";
 
 const router = Router();
 
@@ -8,6 +17,8 @@ router.post("/", createCompany);
 router.get("/", getAllCompaniesBalances);
 
 router.get("/logs", getLogsByDate);
+
+router.get("/expected-usage", getExpectedUsage);
 
 router.get("/:companyId/details", getCompanyDetails);
 
