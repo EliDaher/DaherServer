@@ -11,6 +11,43 @@ const {
 } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
 
+const getDamascusDateKey = () =>
+  new Date().toLocaleDateString("en-CA", {
+    timeZone: "Asia/Damascus",
+  });
+
+const parseMaybeObject = (value: any) => {
+  if (!value || typeof value !== "string") return value || {};
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+};
+
+const getInquiryLogEmailCandidates = (log: any) => {
+  const logData = parseMaybeObject(log?.data);
+  const content = parseMaybeObject(logData?.content);
+  const contentData = parseMaybeObject(content?.data);
+  const request = parseMaybeObject(logData?.request);
+  const contentRequest = parseMaybeObject(content?.request);
+
+  return [
+    log?.from,
+    log?.target,
+    log?.email,
+    logData?.email,
+    logData?.target,
+    logData?.from,
+    logData?.content?.email,
+    content?.email,
+    contentData?.email,
+    request?.email,
+    contentRequest?.email,
+  ];
+};
+
 export const getMonthlyRevenue = async (req: Request, res: Response) => {
   try {
     const invoicesSnap = await get(ref(database, "Invoices"));
@@ -332,7 +369,7 @@ export const fixWrongNumberInvoices = async (req: Request, res: Response) => {
 
 export const getInquiryLogs = async (req: Request, res: Response) => {
   try {
-    const date = req.query.date || new Date().toISOString().split("T")[0];
+    const date = req.query.date || getDamascusDateKey();
     const email = String(req.query.email || "").trim().toLowerCase();
     const dbRef = ref(database);
 
@@ -350,25 +387,7 @@ export const getInquiryLogs = async (req: Request, res: Response) => {
       .filter((log: any) => {
         if (!email) return true;
 
-        let logData = log?.data || {};
-        if (typeof logData === "string") {
-          try {
-            logData = JSON.parse(logData);
-          } catch {
-            logData = {};
-          }
-        }
-
-        const values = [
-          log?.from,
-          log?.target,
-          log?.email,
-          logData?.email,
-          logData?.content?.email,
-          logData?.request?.email,
-        ];
-
-        return values.some(
+        return getInquiryLogEmailCandidates(log).some(
           (value) => String(value || "").toLowerCase() === email,
         );
       })
@@ -379,10 +398,10 @@ export const getInquiryLogs = async (req: Request, res: Response) => {
       logs: logsArray,
     });
   } catch (error: any) {
-    console.error("Error fetching daily total balance:", error);
+    console.error("Error fetching inquiry logs:", error);
     res.status(500).json({
       success: false,
-      message: "حدث خطأ أثناء جلب البيانات",
+      message: "حدث خطأ أثناء جلب سجل الاستعلامات",
       error: error.message,
     });
   }

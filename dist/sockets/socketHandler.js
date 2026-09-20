@@ -15,9 +15,43 @@ const database_1 = require("firebase/database");
 const uuid_1 = require("uuid");
 const { database } = require("../../firebaseConfig.js");
 const clients = {};
-const waitingList = {};
 const pendingStateRequests = {};
 let globalIo;
+const pendingInquiryRequests = {};
+const getInquiryKey = (email) => email.trim().toLowerCase();
+const asObject = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
+const getInquiryContent = (data) => asObject(data === null || data === void 0 ? void 0 : data.content);
+const getInquiryDetails = (data) => {
+    const content = getInquiryContent(data);
+    return {
+        email: String(content.email || "").trim(),
+        selectedCompany: String(content.selectedCompany || content.company || "").trim(),
+        landline: String(content.landline || content.number || "").trim(),
+    };
+};
+const getResponseRequestId = (data) => {
+    const content = getInquiryContent(data);
+    const responseData = content.data;
+    if (content.requestId)
+        return String(content.requestId);
+    if (responseData && typeof responseData === "object" && responseData.requestId) {
+        return String(responseData.requestId);
+    }
+    return "";
+};
+const buildResultMessage = (data) => {
+    var _a;
+    const content = getInquiryContent(data);
+    const responseData = (_a = content.data) !== null && _a !== void 0 ? _a : content;
+    if (typeof responseData === "string")
+        return `Sent payment result: ${responseData}`;
+    try {
+        return `Sent payment result: ${JSON.stringify(responseData)}`;
+    }
+    catch (_b) {
+        return "Sent payment result: [unserializable response]";
+    }
+};
 const emitToUser = (username, event, data) => {
     if (!globalIo) {
         console.warn("Socket.IO not initialized");
@@ -227,44 +261,139 @@ function socketHandler(io) {
                 console.error("Error creating log from socket event:", error);
             }
         }));
-        socket.on("json_message", (data) => {
-            var _a, _b, _c;
+        socket.on("json_message", (data) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             const target = data.target;
-            const sender = ((_a = data === null || data === void 0 ? void 0 : data.content) === null || _a === void 0 ? void 0 : _a.email) || "unknown";
+            const content = getInquiryContent(data);
+            const sender = String(content.email || "unknown").trim();
             if (!target) {
                 console.log("No target specified in message:", data);
                 return;
             }
             if (target === "worker") {
-                if (waitingList[sender]) {
-                    const message = `There is already a pending request for ${sender}. Please try again later.`;
-                    (_b = io.to(clients[sender])) === null || _b === void 0 ? void 0 : _b.emit("json_message", {
-                        content: {
-                            data: {
-                                error: message,
-                            },
+                const { email, selectedCompany, landline } = getInquiryDetails(data);
+                const inquiryEmail = email || sender;
+                const inquiryKey = getInquiryKey(inquiryEmail);
+                const requestId = String(content.requestId || (0, uuid_1.v4)());
+                const workerSocketId = clients["worker"];
+                const senderSocketId = clients[inquiryEmail] || clients[sender] || socket.id;
+                const forwardedContent = Object.assign(Object.assign({}, content), { email: inquiryEmail, requestId });
+                const forwardedData = Object.assign(Object.assign({}, data), { content: forwardedContent });
+                if (pendingInquiryRequests[inquiryKey]) {
+                    delete pendingInquiryRequests[inquiryKey];
+                }
+                try {
+                    yield createLog({
+                        type: "message",
+                        from: inquiryEmail,
+                        target: "worker",
+                        message: `Received inquiry request for ${landline || "-"} in ${selectedCompany || "-"}`,
+                        data: {
+                            email: inquiryEmail,
+                            requestId,
+                            selectedCompany,
+                            landline,
+                            content: forwardedContent,
                         },
                     });
-                    delete waitingList[sender];
+                }
+                catch (error) {
+                    console.error("Error creating inquiry request log:", error);
+                }
+                if (!workerSocketId) {
+                    const errorResponse = {
+                        requestId,
+                        email: inquiryEmail,
+                        selectedCompany,
+                        landline,
+                        error: "خادم الاستعلام غير متصل حاليًا، الرجاء إعادة المحاولة الآن",
+                    };
+                    io.to(senderSocketId).emit("json_message", {
+                        content: {
+                            requestId,
+                            email: inquiryEmail,
+                            data: errorResponse,
+                        },
+                    });
+                    try {
+                        yield createLog({
+                            type: "message",
+                            from: "server",
+                            target: inquiryEmail,
+                            message: `Sent payment result: ${JSON.stringify(errorResponse)}`,
+                            data: errorResponse,
+                        });
+                    }
+                    catch (error) {
+                        console.error("Error creating inquiry worker offline log:", error);
+                    }
                     return;
                 }
-                waitingList[sender] = "waiting";
+                pendingInquiryRequests[inquiryKey] = {
+                    requestId,
+                    socketId: senderSocketId,
+                    email: inquiryEmail,
+                    selectedCompany,
+                    landline,
+                    startedAt: Date.now(),
+                };
+                io.to(workerSocketId).emit("json_message", forwardedData);
+                return;
             }
             else {
-                delete waitingList[target];
+                const inquiryKey = getInquiryKey(String(target));
+                const pendingInquiry = pendingInquiryRequests[inquiryKey];
+                const responseRequestId = getResponseRequestId(data);
+                if (pendingInquiry &&
+                    responseRequestId &&
+                    responseRequestId !== pendingInquiry.requestId) {
+                    console.log(`Ignoring stale inquiry response for ${target}. Expected ${pendingInquiry.requestId}, received ${responseRequestId}`);
+                    return;
+                }
+                if (pendingInquiry) {
+                    delete pendingInquiryRequests[inquiryKey];
+                }
+                const responseContent = getInquiryContent(data);
+                const responseData = responseContent.data;
+                const enrichedResponseData = responseData && typeof responseData === "object" && !Array.isArray(responseData)
+                    ? Object.assign(Object.assign({}, responseData), { requestId: responseRequestId || (pendingInquiry === null || pendingInquiry === void 0 ? void 0 : pendingInquiry.requestId), email: responseData.email || target, selectedCompany: responseData.selectedCompany || (pendingInquiry === null || pendingInquiry === void 0 ? void 0 : pendingInquiry.selectedCompany), landline: responseData.landline || (pendingInquiry === null || pendingInquiry === void 0 ? void 0 : pendingInquiry.landline) }) : responseData;
+                const enrichedData = Object.assign(Object.assign({}, data), { content: Object.assign(Object.assign({}, responseContent), { requestId: responseRequestId || (pendingInquiry === null || pendingInquiry === void 0 ? void 0 : pendingInquiry.requestId), email: responseContent.email || target, data: enrichedResponseData }) });
+                try {
+                    yield createLog({
+                        type: "message",
+                        from: data.from || "worker",
+                        target,
+                        message: buildResultMessage(enrichedData),
+                        data: {
+                            email: target,
+                            requestId: responseRequestId || (pendingInquiry === null || pendingInquiry === void 0 ? void 0 : pendingInquiry.requestId),
+                            selectedCompany: (pendingInquiry === null || pendingInquiry === void 0 ? void 0 : pendingInquiry.selectedCompany) || "",
+                            landline: (pendingInquiry === null || pendingInquiry === void 0 ? void 0 : pendingInquiry.landline) || "",
+                            content: enrichedData.content,
+                        },
+                    });
+                }
+                catch (error) {
+                    console.error("Error creating inquiry response log:", error);
+                }
+                if (clients[target]) {
+                    (_a = io.to(clients[target])) === null || _a === void 0 ? void 0 : _a.emit("json_message", enrichedData);
+                }
+                else {
+                    console.log(`Client ${target} not connected`);
+                }
             }
-            if (clients[target]) {
-                (_c = io.to(clients[target])) === null || _c === void 0 ? void 0 : _c.emit("json_message", data);
-            }
-            else {
-                console.log(`Client ${target} not connected`);
-            }
-        });
+        }));
         socket.on("disconnect", () => __awaiter(this, void 0, void 0, function* () {
             console.log("Client disconnected:", socket.id);
             for (const requestId in pendingStateRequests) {
                 if (pendingStateRequests[requestId] === socket.id) {
                     delete pendingStateRequests[requestId];
+                }
+            }
+            for (const email in pendingInquiryRequests) {
+                if (pendingInquiryRequests[email].socketId === socket.id) {
+                    delete pendingInquiryRequests[email];
                 }
             }
             for (const name in clients) {

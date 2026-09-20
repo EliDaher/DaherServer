@@ -13,6 +13,40 @@ exports.getTodayOverview = exports.getSignatures = exports.AddSigSamer = exports
 const todayOverview_service_1 = require("../services/todayOverview.service");
 const { ref, get, remove, update, child, push, set, } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
+const getDamascusDateKey = () => new Date().toLocaleDateString("en-CA", {
+    timeZone: "Asia/Damascus",
+});
+const parseMaybeObject = (value) => {
+    if (!value || typeof value !== "string")
+        return value || {};
+    try {
+        return JSON.parse(value);
+    }
+    catch (_a) {
+        return {};
+    }
+};
+const getInquiryLogEmailCandidates = (log) => {
+    var _a;
+    const logData = parseMaybeObject(log === null || log === void 0 ? void 0 : log.data);
+    const content = parseMaybeObject(logData === null || logData === void 0 ? void 0 : logData.content);
+    const contentData = parseMaybeObject(content === null || content === void 0 ? void 0 : content.data);
+    const request = parseMaybeObject(logData === null || logData === void 0 ? void 0 : logData.request);
+    const contentRequest = parseMaybeObject(content === null || content === void 0 ? void 0 : content.request);
+    return [
+        log === null || log === void 0 ? void 0 : log.from,
+        log === null || log === void 0 ? void 0 : log.target,
+        log === null || log === void 0 ? void 0 : log.email,
+        logData === null || logData === void 0 ? void 0 : logData.email,
+        logData === null || logData === void 0 ? void 0 : logData.target,
+        logData === null || logData === void 0 ? void 0 : logData.from,
+        (_a = logData === null || logData === void 0 ? void 0 : logData.content) === null || _a === void 0 ? void 0 : _a.email,
+        content === null || content === void 0 ? void 0 : content.email,
+        contentData === null || contentData === void 0 ? void 0 : contentData.email,
+        request === null || request === void 0 ? void 0 : request.email,
+        contentRequest === null || contentRequest === void 0 ? void 0 : contentRequest.email,
+    ];
+};
 const getMonthlyRevenue = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const invoicesSnap = yield get(ref(database, "Invoices"));
@@ -287,7 +321,7 @@ const fixWrongNumberInvoices = (req, res) => __awaiter(void 0, void 0, void 0, f
 exports.fixWrongNumberInvoices = fixWrongNumberInvoices;
 const getInquiryLogs = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const date = req.query.date || new Date().toISOString().split("T")[0];
+        const date = req.query.date || getDamascusDateKey();
         const email = String(req.query.email || "").trim().toLowerCase();
         const dbRef = ref(database);
         const snapshot = yield get(child(dbRef, `astalamatLogs/${date}`));
@@ -300,27 +334,9 @@ const getInquiryLogs = (req, res) => __awaiter(void 0, void 0, void 0, function*
         const data = snapshot.val();
         const logsArray = Object.values(data)
             .filter((log) => {
-            var _a, _b;
             if (!email)
                 return true;
-            let logData = (log === null || log === void 0 ? void 0 : log.data) || {};
-            if (typeof logData === "string") {
-                try {
-                    logData = JSON.parse(logData);
-                }
-                catch (_c) {
-                    logData = {};
-                }
-            }
-            const values = [
-                log === null || log === void 0 ? void 0 : log.from,
-                log === null || log === void 0 ? void 0 : log.target,
-                log === null || log === void 0 ? void 0 : log.email,
-                logData === null || logData === void 0 ? void 0 : logData.email,
-                (_a = logData === null || logData === void 0 ? void 0 : logData.content) === null || _a === void 0 ? void 0 : _a.email,
-                (_b = logData === null || logData === void 0 ? void 0 : logData.request) === null || _b === void 0 ? void 0 : _b.email,
-            ];
-            return values.some((value) => String(value || "").toLowerCase() === email);
+            return getInquiryLogEmailCandidates(log).some((value) => String(value || "").toLowerCase() === email);
         })
             .sort((a, b) => b.timestamp - a.timestamp);
         return res.status(200).json({
@@ -329,10 +345,10 @@ const getInquiryLogs = (req, res) => __awaiter(void 0, void 0, void 0, function*
         });
     }
     catch (error) {
-        console.error("Error fetching daily total balance:", error);
+        console.error("Error fetching inquiry logs:", error);
         res.status(500).json({
             success: false,
-            message: "حدث خطأ أثناء جلب البيانات",
+            message: "حدث خطأ أثناء جلب سجل الاستعلامات",
             error: error.message,
         });
     }

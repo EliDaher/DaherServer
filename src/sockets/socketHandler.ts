@@ -5,10 +5,62 @@ import { v4 as uuid } from "uuid";
 const { database } = require("../../firebaseConfig.js");
 
 const clients: Record<string, string> = {};
-const waitingList: Record<string, string> = {};
 const pendingStateRequests: Record<string, string> = {};
 
 let globalIo: Server;
+
+type PendingInquiryRequest = {
+  requestId: string;
+  socketId: string;
+  email: string;
+  selectedCompany: string;
+  landline: string;
+  startedAt: number;
+};
+
+const pendingInquiryRequests: Record<string, PendingInquiryRequest> = {};
+
+const getInquiryKey = (email: string) => email.trim().toLowerCase();
+
+const asObject = (value: any): Record<string, any> =>
+  value && typeof value === "object" && !Array.isArray(value) ? value : {};
+
+const getInquiryContent = (data: any) => asObject(data?.content);
+
+const getInquiryDetails = (data: any) => {
+  const content = getInquiryContent(data);
+
+  return {
+    email: String(content.email || "").trim(),
+    selectedCompany: String(content.selectedCompany || content.company || "").trim(),
+    landline: String(content.landline || content.number || "").trim(),
+  };
+};
+
+const getResponseRequestId = (data: any) => {
+  const content = getInquiryContent(data);
+  const responseData = content.data;
+
+  if (content.requestId) return String(content.requestId);
+  if (responseData && typeof responseData === "object" && responseData.requestId) {
+    return String(responseData.requestId);
+  }
+
+  return "";
+};
+
+const buildResultMessage = (data: any) => {
+  const content = getInquiryContent(data);
+  const responseData = content.data ?? content;
+
+  if (typeof responseData === "string") return `Sent payment result: ${responseData}`;
+
+  try {
+    return `Sent payment result: ${JSON.stringify(responseData)}`;
+  } catch {
+    return "Sent payment result: [unserializable response]";
+  }
+};
 
 export const emitToUser = (username: string, event: string, data: any) => {
   if (!globalIo) {
@@ -276,36 +328,165 @@ export function socketHandler(io: Server) {
       }
     });
 
-    socket.on("json_message", (data) => {
+    socket.on("json_message", async (data) => {
       const target = data.target;
-      const sender = data?.content?.email || "unknown";
+      const content = getInquiryContent(data);
+      const sender = String(content.email || "unknown").trim();
       if (!target) {
         console.log("No target specified in message:", data);
         return;
       }
 
       if (target === "worker") {
-        if (waitingList[sender]) {
-          const message = `There is already a pending request for ${sender}. Please try again later.`;
-          io.to(clients[sender])?.emit("json_message", {
-            content: {
-              data: {
-                error: message,
-              },
+        const { email, selectedCompany, landline } = getInquiryDetails(data);
+        const inquiryEmail = email || sender;
+        const inquiryKey = getInquiryKey(inquiryEmail);
+        const requestId = String(content.requestId || uuid());
+        const workerSocketId = clients["worker"];
+        const senderSocketId = clients[inquiryEmail] || clients[sender] || socket.id;
+        const forwardedContent = {
+          ...content,
+          email: inquiryEmail,
+          requestId,
+        };
+        const forwardedData = {
+          ...data,
+          content: forwardedContent,
+        };
+
+        if (pendingInquiryRequests[inquiryKey]) {
+          delete pendingInquiryRequests[inquiryKey];
+        }
+
+        try {
+          await createLog({
+            type: "message",
+            from: inquiryEmail,
+            target: "worker",
+            message: `Received inquiry request for ${landline || "-"} in ${
+              selectedCompany || "-"
+            }`,
+            data: {
+              email: inquiryEmail,
+              requestId,
+              selectedCompany,
+              landline,
+              content: forwardedContent,
             },
           });
-          delete waitingList[sender];
+        } catch (error) {
+          console.error("Error creating inquiry request log:", error);
+        }
+
+        if (!workerSocketId) {
+          const errorResponse = {
+            requestId,
+            email: inquiryEmail,
+            selectedCompany,
+            landline,
+            error: "خادم الاستعلام غير متصل حاليًا، الرجاء إعادة المحاولة الآن",
+          };
+
+          io.to(senderSocketId).emit("json_message", {
+            content: {
+              requestId,
+              email: inquiryEmail,
+              data: errorResponse,
+            },
+          });
+
+          try {
+            await createLog({
+              type: "message",
+              from: "server",
+              target: inquiryEmail,
+              message: `Sent payment result: ${JSON.stringify(errorResponse)}`,
+              data: errorResponse,
+            });
+          } catch (error) {
+            console.error("Error creating inquiry worker offline log:", error);
+          }
+
           return;
         }
-        waitingList[sender] = "waiting";
-      } else {
-        delete waitingList[target];
-      }
 
-      if (clients[target]) {
-        io.to(clients[target])?.emit("json_message", data);
+        pendingInquiryRequests[inquiryKey] = {
+          requestId,
+          socketId: senderSocketId,
+          email: inquiryEmail,
+          selectedCompany,
+          landline,
+          startedAt: Date.now(),
+        };
+
+        io.to(workerSocketId).emit("json_message", forwardedData);
+        return;
       } else {
-        console.log(`Client ${target} not connected`);
+        const inquiryKey = getInquiryKey(String(target));
+        const pendingInquiry = pendingInquiryRequests[inquiryKey];
+        const responseRequestId = getResponseRequestId(data);
+
+        if (
+          pendingInquiry &&
+          responseRequestId &&
+          responseRequestId !== pendingInquiry.requestId
+        ) {
+          console.log(
+            `Ignoring stale inquiry response for ${target}. Expected ${pendingInquiry.requestId}, received ${responseRequestId}`
+          );
+          return;
+        }
+
+        if (pendingInquiry) {
+          delete pendingInquiryRequests[inquiryKey];
+        }
+
+        const responseContent = getInquiryContent(data);
+        const responseData = responseContent.data;
+        const enrichedResponseData =
+          responseData && typeof responseData === "object" && !Array.isArray(responseData)
+            ? {
+                ...responseData,
+                requestId: responseRequestId || pendingInquiry?.requestId,
+                email: responseData.email || target,
+                selectedCompany:
+                  responseData.selectedCompany || pendingInquiry?.selectedCompany,
+                landline: responseData.landline || pendingInquiry?.landline,
+              }
+            : responseData;
+        const enrichedData = {
+          ...data,
+          content: {
+            ...responseContent,
+            requestId: responseRequestId || pendingInquiry?.requestId,
+            email: responseContent.email || target,
+            data: enrichedResponseData,
+          },
+        };
+
+        try {
+          await createLog({
+            type: "message",
+            from: data.from || "worker",
+            target,
+            message: buildResultMessage(enrichedData),
+            data: {
+              email: target,
+              requestId: responseRequestId || pendingInquiry?.requestId,
+              selectedCompany: pendingInquiry?.selectedCompany || "",
+              landline: pendingInquiry?.landline || "",
+              content: enrichedData.content,
+            },
+          });
+        } catch (error) {
+          console.error("Error creating inquiry response log:", error);
+        }
+
+        if (clients[target]) {
+          io.to(clients[target])?.emit("json_message", enrichedData);
+        } else {
+          console.log(`Client ${target} not connected`);
+        }
       }
     });
 
@@ -315,6 +496,12 @@ export function socketHandler(io: Server) {
       for (const requestId in pendingStateRequests) {
         if (pendingStateRequests[requestId] === socket.id) {
           delete pendingStateRequests[requestId];
+        }
+      }
+
+      for (const email in pendingInquiryRequests) {
+        if (pendingInquiryRequests[email].socketId === socket.id) {
+          delete pendingInquiryRequests[email];
         }
       }
 
