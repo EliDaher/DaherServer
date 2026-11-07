@@ -5,5 +5,7 @@ const reportedTransactions_controller_1 = require("../controllers/reportedTransa
 const router = (0, express_1.Router)();
 router.get("/", reportedTransactions_controller_1.getReportedTransactions);
 router.post("/", reportedTransactions_controller_1.createReportedTransaction);
+router.patch("/:id", reportedTransactions_controller_1.updateReportedTransaction);
+router.get("/:id/history", reportedTransactions_controller_1.getReportedTransactionHistory);
 router.delete("/:id", reportedTransactions_controller_1.deleteReportedTransaction);
 exports.default = router;

@@ -8,123 +8,82 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteReportedTransaction = exports.createReportedTransaction = exports.getReportedTransactions = void 0;
-const { ref, get, push, set, remove } = require("firebase/database");
+exports.deleteReportedTransaction = exports.getReportedTransactionHistory = exports.updateReportedTransaction = exports.createReportedTransaction = exports.getReportedTransactions = void 0;
+const reportedTransactions_1 = require("../services/reportedTransactions");
+const { ref, get, push, runTransaction } = require("firebase/database");
 const { database } = require("../../firebaseConfig.js");
-function toRequiredString(value) {
-    if (typeof value !== "string") {
-        return "";
-    }
-    return value.trim();
-}
-function buildMatchKey(number, company) {
-    return `${number.trim()}::${company.trim().toLowerCase()}`;
-}
-function mapSnapshotToRecords(value) {
-    if (!value) {
-        return [];
-    }
-    return Object.entries(value).map(([id, record]) => ({
-        id,
-        number: String((record === null || record === void 0 ? void 0 : record.number) || ""),
-        company: String((record === null || record === void 0 ? void 0 : record.company) || ""),
-        note: typeof (record === null || record === void 0 ? void 0 : record.note) === "string" && record.note.trim()
-            ? record.note.trim()
-            : undefined,
-        createdAt: String((record === null || record === void 0 ? void 0 : record.createdAt) || ""),
-        createdBy: typeof (record === null || record === void 0 ? void 0 : record.createdBy) === "string" && record.createdBy.trim()
-            ? record.createdBy.trim()
-            : undefined,
-    }));
+function failure(res, error) {
+    if (error instanceof reportedTransactions_1.ReportError)
+        return res.status(error.status).json({ success: false, message: error.message });
+    console.error("Reported transaction error:", error);
+    return res.status(500).json({ success: false, message: "Failed to save or load reported transaction" });
 }
 const getReportedTransactions = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const snapshot = yield get(ref(database, "reportedTransactions"));
-        const records = mapSnapshotToRecords(snapshot.exists() ? snapshot.val() : null);
-        records.sort((a, b) => {
-            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        });
-        return res.status(200).json({
-            success: true,
-            data: records,
-        });
+        const data = Object.entries(snapshot.val() || {}).map(([id, record]) => {
+            const _a = (0, reportedTransactions_1.normalizeReport)(id, record), { history } = _a, report = __rest(_a, ["history"]);
+            return report;
+        }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        return res.json({ success: true, data });
     }
     catch (error) {
-        console.error("Error fetching reported transactions:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to fetch reported transactions",
-        });
+        return failure(res, error);
     }
 });
 exports.getReportedTransactions = getReportedTransactions;
-const createReportedTransaction = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c, _d;
-    try {
-        const number = toRequiredString((_a = req.body) === null || _a === void 0 ? void 0 : _a.number);
-        const company = toRequiredString((_b = req.body) === null || _b === void 0 ? void 0 : _b.company);
-        const note = toRequiredString((_c = req.body) === null || _c === void 0 ? void 0 : _c.note);
-        const createdBy = toRequiredString((_d = req.body) === null || _d === void 0 ? void 0 : _d.createdBy);
-        if (!number || !company) {
-            return res.status(400).json({
-                success: false,
-                message: "number and company are required",
-            });
+function save(req, res, creating) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const root = ref(database, "reportedTransactions");
+            const id = creating ? push(root).key : req.params.id;
+            if (!id || /[.#$\[\]\/]/.test(id))
+                throw new reportedTransactions_1.ReportError(400, "Invalid report id");
+            const eventId = push(root).key;
+            const timestamp = new Date().toISOString();
+            yield get(root); // Prime the transaction cache before validating existing records.
+            const result = yield runTransaction(root, (records) => {
+                return (0, reportedTransactions_1.applyReportChange)(records || {}, id, req.body || {}, creating, timestamp, eventId);
+            }, { applyLocally: false });
+            const _a = (0, reportedTransactions_1.normalizeReport)(id, result.snapshot.child(id).val()), { history } = _a, data = __rest(_a, ["history"]);
+            return res.status(creating ? 201 : 200).json({ success: true, data });
         }
-        const rootRef = ref(database, "reportedTransactions");
-        const snapshot = yield get(rootRef);
-        const existingRecords = mapSnapshotToRecords(snapshot.exists() ? snapshot.val() : null);
-        const incomingKey = buildMatchKey(number, company);
-        const duplicate = existingRecords.some((record) => buildMatchKey(record.number, record.company) === incomingKey);
-        if (duplicate) {
-            return res.status(409).json({
-                success: false,
-                message: "Reported transaction already exists",
-            });
+        catch (error) {
+            return failure(res, error);
         }
-        const newRecordRef = push(rootRef);
-        const id = newRecordRef.key;
-        const record = Object.assign(Object.assign(Object.assign({ id,
-            number,
-            company }, (note ? { note } : {})), { createdAt: new Date().toISOString() }), (createdBy ? { createdBy } : {}));
-        yield set(newRecordRef, record);
-        return res.status(201).json({
-            success: true,
-            data: record,
-        });
-    }
-    catch (error) {
-        console.error("Error creating reported transaction:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to create reported transaction",
-        });
-    }
-});
+    });
+}
+const createReportedTransaction = (req, res) => save(req, res, true);
 exports.createReportedTransaction = createReportedTransaction;
-const deleteReportedTransaction = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
+const updateReportedTransaction = (req, res) => save(req, res, false);
+exports.updateReportedTransaction = updateReportedTransaction;
+const getReportedTransactionHistory = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const id = toRequiredString((_a = req.params) === null || _a === void 0 ? void 0 : _a.id);
-        if (!id) {
-            return res.status(400).json({
-                success: false,
-                message: "id is required",
-            });
-        }
-        yield remove(ref(database, `reportedTransactions/${id}`));
-        return res.status(200).json({
-            success: true,
-            message: "Reported transaction deleted successfully",
-        });
+        const id = req.params.id;
+        if (!id || /[.#$\[\]\/]/.test(id))
+            throw new reportedTransactions_1.ReportError(400, "Invalid report id");
+        const snapshot = yield get(ref(database, `reportedTransactions/${id}`));
+        if (!snapshot.exists())
+            throw new reportedTransactions_1.ReportError(404, "Report not found");
+        const report = (0, reportedTransactions_1.normalizeReport)(id, snapshot.val());
+        return res.json({ success: true, data: Object.values(report.history).sort((a, b) => b.at.localeCompare(a.at)) });
     }
     catch (error) {
-        console.error("Error deleting reported transaction:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to delete reported transaction",
-        });
+        return failure(res, error);
     }
 });
+exports.getReportedTransactionHistory = getReportedTransactionHistory;
+const deleteReportedTransaction = (_req, res) => res.status(405).json({ success: false, message: "Reports are preserved. Mark the report done instead." });
 exports.deleteReportedTransaction = deleteReportedTransaction;
