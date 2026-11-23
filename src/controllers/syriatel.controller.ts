@@ -85,3 +85,88 @@ export const rechargeSyriatel = async (req: Request, res: Response) => {
     clearTimeout(timeout);
   }
 };
+
+
+export const getSyriatelBalance = async (req: Request, res: Response) => {
+  const { gsm } = req.query;
+
+  // التحقق من رقم الحساب أو كود الكاش
+  if (typeof gsm !== "string" || !/^(09\d{8}|\d{6,12})$/.test(gsm)) {
+    return res.status(400).json({
+      success: false,
+      message: "رقم حساب سيريتل كاش غير صالح",
+    });
+  }
+
+  const apiKey = process.env.APISYRIA_API_KEY;
+
+  if (!apiKey) {
+    return res.status(500).json({
+      success: false,
+      message: "مفتاح API غير موجود",
+    });
+  }
+
+  const controller = new AbortController();
+
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const url = new URL("https://apisyria.com/api/v1");
+
+    url.searchParams.set("resource", "syriatel");
+    url.searchParams.set("action", "balance");
+    url.searchParams.set("gsm", gsm);
+    url.searchParams.set("api_key", apiKey);
+
+    const providerResponse = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+
+    const providerData: unknown = await providerResponse
+      .json()
+      .catch(() => null);
+
+    const data = providerData as {
+      success?: boolean;
+      data?: {
+        gsm?: string;
+        cash_code?: string;
+        balance?: string;
+        merchant_balance?: string;
+      };
+      message?: string;
+    } | null;
+
+    if (
+      !providerResponse.ok ||
+      data?.success !== true ||
+      data.data?.balance == null
+    ) {
+      return res.status(502).json({
+        success: false,
+        message: data?.message || "تعذر جلب رصيد سيريتل كاش",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        gsm: data.data.gsm ?? gsm,
+        balance: data.data.balance,
+        merchant_balance: data.data.merchant_balance ?? "0",
+      },
+    });
+  } catch {
+    return res.status(502).json({
+      success: false,
+      message: "تعذر الاتصال بخدمة رصيد سيريتل كاش",
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
