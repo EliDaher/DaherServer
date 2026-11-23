@@ -14,6 +14,7 @@ import profitLogsRoutes from "./profitLogs.routes";
 import storeRoutes from "./store.routes";
 import reportedTransactionsRoutes from "./reportedTransactions.routes";
 import mikrotikRoutes from "./mikrotik.routes";
+import syriatelRoutes from "./syriatel.routes";
 
 const router = Router();
 
@@ -46,5 +47,7 @@ router.use("/store", storeRoutes);
 router.use("/reported-transactions", reportedTransactionsRoutes);
 
 router.use("/mikrotik", mikrotikRoutes);
+
+router.use("/syriatel", syriatelRoutes);
 
 export default router;
